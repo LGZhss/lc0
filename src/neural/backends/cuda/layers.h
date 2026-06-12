@@ -355,6 +355,8 @@ class EncoderBlock {
   DataType *mha_v_w, *mha_v_b;
   DataType *mha_qkv_w, *mha_qkv_b;
   DataType *mha_dense_w, *mha_dense_b;
+  DataType *mha_rpe_q, *mha_rpe_k, *mha_rpe_v;
+  DataType *mha_rpe_factorizer;
 
   DataType *ln1_gammas, *ln1_betas;
 
@@ -374,6 +376,9 @@ class EncoderBlock {
   int mha_k_size_;
   int mha_v_size_;
   int mha_dense_size_;
+  int mha_rpe_q_size_;
+  int mha_rpe_k_size_;
+  int mha_rpe_v_size_;
 
   int ffn_dense1_size_;
   int ffn_dense2_size_;
@@ -381,7 +386,7 @@ class EncoderBlock {
   int embedding_op_size_;
   int encoder_heads_;
 
-  float alpha_;  // scale to apply to skip connection add
+  float alpha_;        // scale to apply to skip connection add
   float default_eps_;  // value of epsilon where it wasn't specified in training
 
   const bool has_smolgen_;
@@ -492,13 +497,18 @@ class AttentionBody : public BaseLayer<DataType> {
 
  private:
   // GPU allocations to hold various weights used by the attention net body.
-  DataType *ip_emb_pre_w_, *ip_emb_pre_b_;  // input position preprocessing weights.
-  DataType *ip_emb_w_, *ip_emb_b_;          // "embedding" layer in net body
-  DataType *ip_emb_ln_g_, *ip_emb_ln_b_;  // input embedding layernorm gamma and beta
-  DataType *ip_mult_gate_, *ip_add_gate_;   // input gating
-  DataType *ip_emb_ffn_d1_w_, *ip_emb_ffn_d1_b_;  // input embedding FFN dense1 weights
-  DataType *ip_emb_ffn_d2_w_, *ip_emb_ffn_d2_b_;  // input embedding FFN dense2 weights
-  DataType *ip_emb_ffn_ln_g_, *ip_emb_ffn_ln_b_;  // input embedding FFN layernorm gamma and beta
+  DataType *ip_emb_pre_w_,
+      *ip_emb_pre_b_;               // input position preprocessing weights.
+  DataType *ip_emb_w_, *ip_emb_b_;  // "embedding" layer in net body
+  DataType *ip_emb_ln_g_,
+      *ip_emb_ln_b_;                       // input embedding layernorm gamma and beta
+  DataType *ip_mult_gate_, *ip_add_gate_;  // input gating
+  DataType *ip_emb_ffn_d1_w_,
+      *ip_emb_ffn_d1_b_;                   // input embedding FFN dense1 weights
+  DataType *ip_emb_ffn_d2_w_,
+      *ip_emb_ffn_d2_b_;      // input embedding FFN dense2 weights
+  DataType *ip_emb_ffn_ln_g_,
+      *ip_emb_ffn_ln_b_;      // input embedding FFN layernorm gamma and beta
   DataType *smolgen_global_;  // global smolgen weights for all encoder layers
   DataType *pos_encoding_;
   int embedding_dense_size_;
