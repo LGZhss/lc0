@@ -1434,6 +1434,7 @@ void genOffsetPointers(T** offsets, int heads, int max_batch, int depth,
                                               d_model, k, q, b1, v, b2);
   }
 }
+template <typename T>
 __device__ __forceinline__ T dotProductSum(int x, const T* U, const T* V,
                                            int length, bool fp16) {
   assert(length >= 16);

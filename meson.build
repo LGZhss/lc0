@@ -472,6 +472,7 @@ if get_option('build_backends')
     endforeach
     nvcc_io_arguments = ['-c', '@INPUT@', '-o', '@OUTPUT@']
     nvcc_arguments = ['-I', meson.current_source_dir() + '/src']
+    nvcc_arguments += ['-allow-unsupported-compiler']
     nvcc_help = run_command(nvcc, '-h', check : false).stdout()
     if host_machine.system() == 'windows'
       if get_option('b_vscrt') == 'mt'

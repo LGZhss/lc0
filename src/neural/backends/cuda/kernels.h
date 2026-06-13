@@ -167,6 +167,7 @@ void genOffsetPointers(T** offsets, int heads, int max_batch, int depth,
 void fusedMHA(void* output, void* mha_q, void* mha_k, void* mha_v, void* skip,
               int batch_size, int num_heads, int depth, cudaStream_t stream);
 
+template <typename T>
 void multiplyRPEAttentionLogits(const T* rpeInput, const T* rpeWeights,
                                 const T* attnInput, T* output, int B, int H,
                                 int Q, int K, int D, float outScale,
