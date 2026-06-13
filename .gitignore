@@ -1,0 +1,15 @@
+# 忽略大型权重文件和编译输出
+weights.pb.gz
+weights_compressed.pb.gz
+weights_bt4.pb.gz
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go 编译缓存
+/bin/
+/build/
+
+# 不包含 lc0-src（单独的 git 仓库）
+lc0-src/
