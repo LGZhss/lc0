@@ -361,12 +361,14 @@ class SearchWorker {
     std::vector<Move> moves_to_path;
     PositionHistory history;
     TaskWorkspace() {
-      vtp_buffer.reserve(30);
-      visits_to_perform.reserve(30);
-      vtp_last_filled.reserve(30);
-      current_path.reserve(30);
-      moves_to_path.reserve(30);
-      history.Reserve(30);
+      // Pre-reserve for expected depth to minimize allocations.
+      // Expected depth is around 60 (or more) instead of just 30.
+      vtp_buffer.reserve(60);
+      visits_to_perform.reserve(60);
+      vtp_last_filled.reserve(60);
+      current_path.reserve(60);
+      moves_to_path.reserve(60);
+      history.Reserve(60);
     }
   };
 

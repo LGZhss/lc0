@@ -446,8 +446,9 @@ class SearchWorker {
     std::vector<CurrentPath> current_path;
     BackupPath full_path;
     TaskWorkspace() {
-      current_path.reserve(30);
-      full_path.reserve(30);
+      // Pre-reserve for expected depth to minimize allocations.
+      current_path.reserve(60);
+      full_path.reserve(60);
     }
   };
 
