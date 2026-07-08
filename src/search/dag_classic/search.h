@@ -145,6 +145,8 @@ class Search {
   // Depth of a root node is 0 (even number).
   float GetDrawScore(bool is_odd_depth) const;
 
+  mutable SharedMutex nodes_mutex_;
+
   mutable Mutex counters_mutex_ ACQUIRED_AFTER(nodes_mutex_);
   // Tells all threads to stop.
   std::atomic<bool> stop_{false};
@@ -186,7 +188,6 @@ class Search {
   std::atomic<int> tb_hits_{0};
   const MoveList root_move_filter_;
 
-  mutable SharedMutex nodes_mutex_;
   EdgeAndNode current_best_edge_ GUARDED_BY(nodes_mutex_);
   Edge* last_outputted_info_edge_ GUARDED_BY(nodes_mutex_) = nullptr;
   ThinkingInfo last_outputted_uci_info_ GUARDED_BY(nodes_mutex_);
@@ -446,7 +447,6 @@ class SearchWorker {
     std::vector<CurrentPath> current_path;
     BackupPath full_path;
     TaskWorkspace() {
-      // Pre-reserve for expected depth to minimize allocations.
       current_path.reserve(60);
       full_path.reserve(60);
     }

@@ -138,6 +138,8 @@ class Search {
 
   PositionHistory GetPositionHistoryAtNode(const Node* node) const;
 
+  mutable SharedMutex nodes_mutex_;
+
   mutable Mutex counters_mutex_ ACQUIRED_AFTER(nodes_mutex_);
   // Tells all threads to stop.
   std::atomic<bool> stop_{false};
@@ -176,7 +178,6 @@ class Search {
   std::atomic<int> tb_hits_{0};
   const MoveList root_move_filter_;
 
-  mutable SharedMutex nodes_mutex_;
   EdgeAndNode current_best_edge_ GUARDED_BY(nodes_mutex_);
   Edge* last_outputted_info_edge_ GUARDED_BY(nodes_mutex_) = nullptr;
   ThinkingInfo last_outputted_uci_info_ GUARDED_BY(nodes_mutex_);
@@ -361,8 +362,6 @@ class SearchWorker {
     std::vector<Move> moves_to_path;
     PositionHistory history;
     TaskWorkspace() {
-      // Pre-reserve for expected depth to minimize allocations.
-      // Expected depth is around 60 (or more) instead of just 30.
       vtp_buffer.reserve(60);
       visits_to_perform.reserve(60);
       vtp_last_filled.reserve(60);
