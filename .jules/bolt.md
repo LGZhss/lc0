@@ -1,0 +1,3 @@
+## 2025-10-24 - String split optimizations
+**Learning:** `std::istringstream` is surprisingly slow in C++ for simple string splitting compared to `find_first_not_of`/`find_first_of`. Additionally, using `push_back(str.substr(pos, len))` in a vector of strings is suboptimal because it creates a temporary `std::string` which is then moved/copied. `emplace_back(str, pos, len)` forwards the arguments to the `std::string` constructor, avoiding the temporary allocation.
+**Action:** Always prefer direct string search and `emplace_back` for parsing strings instead of streams and `substr` when performance is critical.
