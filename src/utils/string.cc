@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <cctype>
 #include <sstream>
+#include <string_view>
 #include <vector>
 
 namespace lczero {
@@ -46,21 +47,33 @@ std::string StrJoin(const std::vector<std::string>& strings,
 
 std::vector<std::string> StrSplitAtWhitespace(const std::string& str) {
   std::vector<std::string> result;
-  std::istringstream iss(str);
-  std::string tmp;
-  while (iss >> tmp) result.emplace_back(std::move(tmp));
+  std::string_view sv = str;
+  size_t start = sv.find_first_not_of(" \t\n\r\f\v");
+  while (start != std::string_view::npos) {
+    size_t end = sv.find_first_of(" \t\n\r\f\v", start);
+    if (end == std::string_view::npos) {
+        result.emplace_back(sv.substr(start));
+        break;
+    }
+    result.emplace_back(sv.substr(start, end - start));
+    start = sv.find_first_not_of(" \t\n\r\f\v", end);
+  }
   return result;
 }
 
 std::vector<std::string> StrSplit(const std::string& str,
                                   const std::string& delim) {
   std::vector<std::string> result;
-  for (std::string::size_type pos = 0, next = 0; pos != std::string::npos;
-       pos = next) {
-    next = str.find(delim, pos);
-    result.push_back(str.substr(pos, next - pos));
-    if (next != std::string::npos) next += delim.size();
+  std::string_view sv = str;
+  std::string_view delim_sv = delim;
+
+  auto pos = sv.find(delim_sv);
+  while (pos != std::string_view::npos) {
+    result.emplace_back(sv.substr(0, pos));
+    sv.remove_prefix(pos + delim_sv.size());
+    pos = sv.find(delim_sv);
   }
+  result.emplace_back(sv);
   return result;
 }
 
