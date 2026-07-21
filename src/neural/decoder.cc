@@ -191,7 +191,7 @@ void PopulateBoard(pblczero::NetworkFormat::InputFormat input_format,
         piece = 'k';
       }
       if (emptycounter > 0 && piece) {
-        fen += static_cast<char>('0' + emptycounter);
+        fen += "012345678"[emptycounter];
         emptycounter = 0;
       }
       if (piece) {
@@ -200,7 +200,7 @@ void PopulateBoard(pblczero::NetworkFormat::InputFormat input_format,
         emptycounter++;
       }
     }
-    if (emptycounter > 0) fen += static_cast<char>('0' + emptycounter);
+    if (emptycounter > 0) fen += "012345678"[emptycounter];
     if (row > 0) fen += "/";
   }
   fen += " ";
