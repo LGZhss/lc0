@@ -133,6 +133,7 @@ void PopulateBoard(pblczero::NetworkFormat::InputFormat input_format,
                       std::to_string(input_format));
   }
   std::string fen;
+  fen.reserve(100);
   // Canonical input has no sense of side to move, so we should simply assume
   // the starting position is always white.
   bool black_to_move =
@@ -190,7 +191,7 @@ void PopulateBoard(pblczero::NetworkFormat::InputFormat input_format,
         piece = 'k';
       }
       if (emptycounter > 0 && piece) {
-        fen += std::to_string(emptycounter);
+        fen += static_cast<char>('0' + emptycounter);
         emptycounter = 0;
       }
       if (piece) {
@@ -199,7 +200,7 @@ void PopulateBoard(pblczero::NetworkFormat::InputFormat input_format,
         emptycounter++;
       }
     }
-    if (emptycounter > 0) fen += std::to_string(emptycounter);
+    if (emptycounter > 0) fen += static_cast<char>('0' + emptycounter);
     if (row > 0) fen += "/";
   }
   fen += " ";

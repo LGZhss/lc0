@@ -1229,20 +1229,21 @@ std::string BoardToFen(const ChessBoard& in_board) {
   const bool black_to_move = board.flipped();
   if (black_to_move) board.Mirror();
   std::string result;
+  result.reserve(90);
   for (Rank rank = kRank8; rank.IsValid(); --rank) {
     int empty = 0;
     for (File file = kFileA; file <= kFileH; ++file) {
       Square square(file, rank);
       char piece = GetPieceAt(board, square);
       if (piece) {
-        if (empty) result += std::to_string(empty);
+        if (empty) result += static_cast<char>('0' + empty);
         empty = 0;
         result += piece;
       } else {
         ++empty;
       }
     }
-    if (empty) result += std::to_string(empty);
+    if (empty) result += static_cast<char>('0' + empty);
     if (rank != kRank1) result += '/';
   }
   result += black_to_move ? " b" : " w";

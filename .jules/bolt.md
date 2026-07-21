@@ -1,0 +1,3 @@
+## 2024-11-20 - Fast integer to string conversion
+**Learning:** `std::to_string` causes slow string conversion due to heap allocations and general overhead. For converting small integers (e.g. 1-8 for a chess board), casting directly via `static_cast<char>('0' + int_value)` avoids dynamic allocations and performs drastically faster (microseconds vs milliseconds at scale).
+**Action:** Use static character casts for single-digit to string generation and reserve string buffers ahead of time when maximum lengths are highly predictable to avoid unnecessary allocations in performance critical code paths (like fen generation).
