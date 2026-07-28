@@ -33,19 +33,24 @@
 namespace lczero {
 
 Position GameState::CurrentPosition() const {
-  return std::accumulate(
-      moves.begin(), moves.end(), startpos,
-      [](const Position& pos, Move m) { return Position(pos, m); });
+  Position pos = startpos;
+  // Use a simple for loop instead of std::accumulate to avoid lambda overhead
+  // and potential intermediate copies in hot paths.
+  for (Move m : moves) {
+    pos = Position(pos, m);
+  }
+  return pos;
 }
 
 std::vector<Position> GameState::GetPositions() const {
   std::vector<Position> positions;
   positions.reserve(moves.size() + 1);
   positions.push_back(startpos);
-  std::transform(moves.begin(), moves.end(), std::back_inserter(positions),
-                 [&](Move m) {
-                   return Position(positions.back(), m);
-                 });
+  // Use a simple for loop instead of std::transform with std::back_inserter
+  // for better performance by avoiding abstraction overhead.
+  for (Move m : moves) {
+    positions.push_back(Position(positions.back(), m));
+  }
   return positions;
 }
 
