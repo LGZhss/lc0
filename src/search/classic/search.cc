@@ -1585,8 +1585,6 @@ void SearchWorker::PickNodesToExtendTask(
   LCTRACE_FUNCTION_SCOPE;
   // TODO: Bring back pre-cached nodes created outside locks in a way that works
   // with tasks.
-  // TODO: pre-reserve visits_to_perform for expected depth and likely maximum
-  // width. Maybe even do so outside of lock scope.
   auto& vtp_buffer = workspace->vtp_buffer;
   auto& visits_to_perform = workspace->visits_to_perform;
   visits_to_perform.clear();
