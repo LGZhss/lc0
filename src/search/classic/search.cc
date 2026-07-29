@@ -605,6 +605,16 @@ void Search::SendMovesStats() const REQUIRES(counters_mutex_) {
 PositionHistory Search::GetPositionHistoryAtNode(const Node* node) const {
   PositionHistory history(played_history_);
   std::vector<Move> rmoves;
+
+  // Pre-allocate to prevent reallocation during the loop.
+  // The depth from root_node_ to this node is the number of moves.
+  int depth = 0;
+  for (const Node* n = node; n != root_node_; n = n->GetParent()) {
+    depth++;
+  }
+  rmoves.reserve(depth);
+  history.Reserve(history.GetLength() + depth);
+
   for (const Node* n = node; n != root_node_; n = n->GetParent()) {
     rmoves.push_back(n->GetOwnEdge()->GetMove());
   }
@@ -739,6 +749,7 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   //   * If that number is 0, the one with larger prior wins.
   //   * If that number is larger than 0, the one with larger eval wins.
   std::vector<EdgeAndNode> edges;
+  edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
     if (parent == root_node_ && !root_move_filter_.empty() &&
         std::find(root_move_filter_.begin(), root_move_filter_.end(),
