@@ -1595,8 +1595,9 @@ void SearchWorker::PickNodesToExtendTask(
   auto& moves_to_path = workspace->moves_to_path;
   moves_to_path = moves_to_base;
   // Sometimes receiver is reused, othertimes not, so only jump start if small.
-  if (receiver->capacity() < 30) {
-    receiver->reserve(receiver->size() + 30);
+  const size_t new_cap = receiver->size() + collision_limit;
+  if (receiver->capacity() < new_cap) {
+    receiver->reserve(new_cap);
   }
 
   // These 2 are 'filled pre-emptively'.
