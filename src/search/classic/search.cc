@@ -48,7 +48,7 @@ namespace classic {
 
 namespace {
 // Maximum delay between outputting "uci info" when nothing interesting happens.
-const int kUciInfoMinimumFrequencyMs = 5000;
+constexpr int kUciInfoMinimumFrequencyMs = 5000;
 
 MoveList MakeRootMoveFilter(const MoveList& searchmoves,
                             SyzygyTablebase* syzygy_tb,
@@ -738,8 +738,8 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   //   * If that number is 0, the one with larger prior wins.
   //   * If that number is larger than 0, the one with larger eval wins.
   std::vector<EdgeAndNode> edges;
-  edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
+  edges.reserve(parent->GetNumEdges());
     if (parent == root_node_ && !root_move_filter_.empty() &&
         std::find(root_move_filter_.begin(), root_move_filter_.end(),
                   edge.GetMove()) == root_move_filter_.end()) {
