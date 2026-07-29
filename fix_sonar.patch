@@ -1,0 +1,74 @@
+--- src/trainingdata/rescorer.cc
++++ src/trainingdata/rescorer.cc
+@@ -554,8 +554,8 @@
+ template <typename FrameType>
+ void ApplySyzygyRescoring(FileData<FrameType>& data,
+                           SyzygyTablebase* tablebase) {
+   PositionHistory history;
+   int rule50ply;
+   int gameply;
+   ChessBoard board;
+@@ -714,8 +714,8 @@
+
+ template <typename FrameType>
+ void ApplyPolicyAdjustments(FileData<FrameType>& data,
+                             SyzygyTablebase* tablebase, float distTemp,
+                             float distOffset, float dtzBoost) {
+   if (distTemp == 1.0f && distOffset == 0.0f && dtzBoost == 0.0f) {
+     return;  // No adjustments needed
+   }
+@@ -913,8 +913,8 @@
+
+ template <typename FrameType>
+ void ApplyDTZCorrections(FileData<FrameType>& data,
+                          SyzygyTablebase* tablebase) {
+   // Correct move_count using DTZ for 3 piece no-pawn positions only.
+   // If Gaviota TBs are enabled no need to use syzygy.
+   if (gaviotaEnabled) return;
+--- src/search/classic/search.cc
++++ src/search/classic/search.cc
+@@ -46,11 +46,11 @@
+ namespace lczero {
+ namespace classic {
+
+ namespace {
+ // Maximum delay between outputting "uci info" when nothing interesting happens.
+ const int kUciInfoMinimumFrequencyMs = 5000;
+@@ -845,8 +845,8 @@
+   const float fpu =
+       GetFpu(params_, root_node_, /* is_root= */ true, draw_score);
+
+-  for (auto& edge : root_node_->Edges()) {
++  for (const auto& edge : root_node_->Edges()) {
+     if (!root_move_filter_.empty() &&
+         std::find(root_move_filter_.begin(), root_move_filter_.end(),
+                   edge.GetMove()) == root_move_filter_.end()) {
+       continue;
+@@ -860,8 +860,8 @@
+   // TODO(crem) Simplify this code when samplers.h is merged.
+   const float min_eval =
+       max_eval - params_.GetTemperatureWinpctCutoff() / 50.0f;
+-  for (auto& edge : root_node_->Edges()) {
++  for (const auto& edge : root_node_->Edges()) {
+     if (!root_move_filter_.empty() &&
+         std::find(root_move_filter_.begin(), root_move_filter_.end(),
+                   edge.GetMove()) == root_move_filter_.end()) {
+       continue;
+@@ -882,8 +882,8 @@
+       std::lower_bound(cumulative_sums.begin(), cumulative_sums.end(), toss) -
+       cumulative_sums.begin();
+
+-  for (auto& edge : root_node_->Edges()) {
++  for (const auto& edge : root_node_->Edges()) {
+     if (!root_move_filter_.empty() &&
+         std::find(root_move_filter_.begin(), root_move_filter_.end(),
+                   edge.GetMove()) == root_move_filter_.end()) {
+       continue;
+@@ -1580,7 +1580,7 @@
+   // TODO: Bring back pre-cached nodes created outside locks in a way that works
+   // with tasks.
+-  // TODO: pre-reserve visits_to_perform for expected depth and likely maximum
++  // TODO(codeowner): pre-reserve visits_to_perform for expected depth and likely maximum
+   // width. Maybe even do so outside of lock scope.
+   auto& vtp_buffer = workspace->vtp_buffer;
+   auto& visits_to_perform = workspace->visits_to_perform;
