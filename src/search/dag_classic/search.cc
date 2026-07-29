@@ -951,7 +951,7 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
       continue;
     }
     if (edge.GetQ(fpu, draw_score) < min_eval) continue;
-    if (idx-- == 0) return edge;
+    if (idx-- == 0) return EdgeAndNode(edge.edge(), edge.node());
   }
   assert(false);
   return {};
@@ -1423,8 +1423,7 @@ void SearchWorker::GatherMinibatch() {
     // Count the non-collisions.
     int non_collisions = 0;
     for (int i = new_start; i < static_cast<int>(minibatch_.size()); i++) {
-      auto& picked_node = minibatch_[i];
-      if (picked_node.IsCollision()) {
+      if (minibatch_[i].IsCollision()) {
         continue;
       }
       ++non_collisions;
@@ -1446,8 +1445,7 @@ void SearchWorker::GatherMinibatch() {
         ResetTasks();
         int found = 0;
         for (int i = new_start; i < static_cast<int>(minibatch_.size()); i++) {
-          auto& picked_node = minibatch_[i];
-          if (picked_node.IsCollision()) {
+          if (minibatch_[i].IsCollision()) {
             continue;
           }
           ++found;
@@ -1604,7 +1602,7 @@ void SearchWorker::PickNodesToExtend(int collision_limit)
 // repetitions and moves_left.
 // Depth starts with 0 at root, so number of plies in PV equals depth.
 std::pair<int, int> SearchWorker::GetRepetitions(int depth,
-                                                 const Position& position) {
+                                                 const Position& position) const {
   const auto repetitions = position.GetRepetitions();
 
   if (repetitions == 0) return {0, 0};

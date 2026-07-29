@@ -892,7 +892,7 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
       continue;
     }
     if (edge.GetQ(fpu, draw_score) < min_eval) continue;
-    if (idx-- == 0) return edge;
+    if (idx-- == 0) return EdgeAndNode(edge.edge(), edge.node());
   }
   assert(false);
   return {};

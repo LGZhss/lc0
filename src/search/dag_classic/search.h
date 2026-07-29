@@ -504,7 +504,7 @@ class SearchWorker {
   // Check if the situation described by @depth under root and @position is a
   // safe two-fold or a draw by repetition and return the number of safe
   // repetitions and moves_left.
-  std::pair<int, int> GetRepetitions(int depth, const Position& position);
+  std::pair<int, int> GetRepetitions(int depth, const Position& position) const;
   // Check if there is a reason to stop picking and pick @node.
   bool ShouldStopPickingHere(Node* node, bool is_root_node, int repetitions);
   void ProcessPickedTask(int batch_start, int batch_end);
