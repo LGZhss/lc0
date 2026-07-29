@@ -202,6 +202,7 @@ namespace {
 void ApplyDirichletNoise(Node* node, float eps, double alpha) {
   float total = 0;
   std::vector<float> noise;
+  noise.reserve(node->GetNumEdges());
 
   for (int i = 0; i < node->GetNumEdges(); ++i) {
     float eta = Random::Get().GetGamma(alpha, 1.0);
@@ -605,6 +606,8 @@ void Search::SendMovesStats() const REQUIRES(counters_mutex_) {
 PositionHistory Search::GetPositionHistoryAtNode(const Node* node) const {
   PositionHistory history(played_history_);
   std::vector<Move> rmoves;
+  // Pre-allocate to avoid reallocations. A reasonable upper bound is depth.
+  rmoves.reserve(128); // Standard upper bound for typical tree depths.
   for (const Node* n = node; n != root_node_; n = n->GetParent()) {
     rmoves.push_back(n->GetOwnEdge()->GetMove());
   }
@@ -739,6 +742,7 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   //   * If that number is 0, the one with larger prior wins.
   //   * If that number is larger than 0, the one with larger eval wins.
   std::vector<EdgeAndNode> edges;
+  edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
     if (parent == root_node_ && !root_move_filter_.empty() &&
         std::find(root_move_filter_.begin(), root_move_filter_.end(),
@@ -836,6 +840,7 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
   const float draw_score = GetDrawScore(/* is_odd_depth= */ false);
 
   std::vector<float> cumulative_sums;
+  cumulative_sums.reserve(root_node_->GetNumEdges());
   float sum = 0.0;
   float max_n = 0.0;
   const float offset = params_.GetTemperatureVisitOffset();
@@ -2078,6 +2083,7 @@ int SearchWorker::PrefetchIntoCache(Node* node, int budget, bool is_odd_depth) {
   // Populate all subnodes and their scores.
   typedef std::pair<float, EdgeAndNode> ScoredEdge;
   std::vector<ScoredEdge> scores;
+  scores.reserve(node->GetNumEdges());
   const float cpuct =
       ComputeCpuct(params_, node->GetN(), node == search_->root_node_);
   const float puct_mult =

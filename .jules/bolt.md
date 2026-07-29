@@ -1,0 +1,3 @@
+## 2024-11-20 - [Pre-allocate std::vector in search critical paths]
+**Learning:** Found several hot paths in `src/search/classic/search.cc` where `std::vector`s were dynamically populated (e.g., in loops) without a prior `reserve()` call. Specifically, paths dealing with node edges and move histories were allocating vectors without specifying a capacity, which can lead to expensive memory reallocations during MCTS search.
+**Action:** Added `reserve()` to pre-allocate memory for vectors where the size is known (e.g., `node->GetNumEdges()`) or has a reasonable upper bound (e.g., typical tree depth `128` for move history). This will reduce memory allocation overhead in the MCTS search hot loops.
