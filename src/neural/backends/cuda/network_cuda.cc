@@ -241,17 +241,24 @@ class CudaNetwork : public Network {
 
     cudaDeviceProp deviceProp = {};
     cudaGetDeviceProperties(&deviceProp, gpu_id_);
-    showDeviceInfo(deviceProp, gpu_id_);
 
     l2_cache_size_ = deviceProp.l2CacheSize;
     sm_count_ = deviceProp.multiProcessorCount;
 
     allow_cache_opt_ = options.GetOrDefault<bool>("cache_opt", false);
 
+    multi_stream_ = options.GetOrDefault<bool>("multi_stream", false);
+
+    // 【魔改 P2】双缓冲流水线：默认开启，可通过 pipeline=false 关闭
+    // 在GTX 970上，虽然只有1个Copy Engine，但Copy与Compute是独立硬件
+    // 双缓冲让下一帧H2D上传与当前帧compute计算并行，显著提升吞吐
+    // 必须在showDeviceInfo之前赋值，以便正确显示pipeline状态
+    pipeline_enabled_ = options.GetOrDefault<bool>("pipeline", true);
+
+    showDeviceInfo(deviceProp, gpu_id_);
+
     // Select GPU to run on (for *the current* thread).
     ReportCUDAErrors(cudaSetDevice(gpu_id_));
-
-    multi_stream_ = options.GetOrDefault<bool>("multi_stream", false);
 
     // layout used by cuda backend is nchw.
     has_tensor_cores_ = false;
@@ -259,19 +266,9 @@ class CudaNetwork : public Network {
 
     if (fp16) {
       // Check if the GPU support FP16.
-
-      if ((deviceProp.major == 6 && deviceProp.minor != 1) ||
-          (deviceProp.major == 5 && deviceProp.minor == 3)) {
-        // FP16 without tensor cores supported on GP100 (SM 6.0) and Jetson
-        // (SM 5.3 and 6.2). SM 6.1 GPUs also have FP16, but slower than FP32.
+      // 魔改：在构造函数中也强行允许 SM 5.2 (GTX 970) 跳过 FP16 的拦截检查，使用 cuda-fp16
+      if (deviceProp.major >= 5) {
         ;
-      } else if (deviceProp.major >= 7) {
-        // Some GPUs (GTX 16xx) are SM 7.5 but don't have tensor cores
-        // enabling TENSOR_OP_MATH for them works but is very very slow
-        // (likely because the system emulates it).
-        if (!strstr(deviceProp.name, "GTX 16")) {
-          has_tensor_cores_ = true;
-        }
       } else {
         throw Exception("Your GPU doesn't support FP16");
       }
@@ -285,7 +282,7 @@ class CudaNetwork : public Network {
       ReportCUDAErrors(
           cudaStreamCreateWithFlags(&download_stream_, cudaStreamNonBlocking));
       ReportCUDAErrors(cudaEventCreateWithFlags(&compute_ordering_event_,
-                                                cudaEventDisableTiming));
+                                                 cudaEventDisableTiming));
       ReportCUBLASErrors(cublasCreate(&cublas_));
       ReportCUBLASErrors(cublasSetStream(cublas_, compute_stream_));
       if (has_tensor_cores_)
@@ -627,6 +624,19 @@ class CudaNetwork : public Network {
         ReportCUDAErrors(cudaMalloc(&mem, maxSize));
         ReportCUDAErrors(cudaMemset(mem, 0, maxSize));
       }
+
+      // 【魔改】双缓冲：分配第二套tensor_mem
+      if (pipeline_enabled_) {
+        for (auto& mem : tensor_mem_pingpong_) {
+          ReportCUDAErrors(cudaMalloc(&mem, maxSize));
+          ReportCUDAErrors(cudaMemset(mem, 0, maxSize));
+        }
+        // 创建流水线同步Event
+        ReportCUDAErrors(cudaEventCreateWithFlags(&pipeline_compute_done_event_,
+                                                   cudaEventDisableTiming));
+        ReportCUDAErrors(cudaEventCreateWithFlags(&pipeline_download_done_event_,
+                                                   cudaEventDisableTiming));
+      }
     }
 
     tensor_mem_size_ = multi_stream_ ? maxSize : 0;
@@ -672,8 +682,19 @@ class CudaNetwork : public Network {
   }
 
   void UploadInputs(InputsOutputs<DataType>* io, int batchSize) {
-    // Multu-stream can capture uploads without external events.
+    // 【魔改注释】将输入数据从Host异步传输到Device
+    // H2D传输在upload_stream上执行，不阻塞compute_stream
+    // 通过Event同步确保compute_stream在H2D完成后才开始计算
+    // Multi-stream can capture uploads without external events.
     if (multi_stream_) return;
+    // 【魔改】流水线模式：等待上一帧的D2H回传完成，确保ping-pong buffer可安全复用
+    // 此同步必须在H2D上传之前，否则可能覆盖正在被D2H读取的buffer
+    // 注意：此逻辑不能放在forwardEval内部的CUDA_GRAPH_SUPPORTS_EXTERNAL_EVENTS条件中
+    // 因为在CUDA 10.x上该条件为false，UploadInputs由ComputeBlocking单独调用
+    if (pipeline_enabled_ && pipeline_download_done_event_) {
+      ReportCUDAErrors(
+          cudaStreamWaitEvent(upload_stream_, pipeline_download_done_event_, 0));
+    }
     ReportCUDAErrors(
         cudaMemcpyAsync(io->input_masks_mem_gpu_, io->input_masks_mem_,
                         batchSize * kInputPlanes * sizeof(uint64_t),
@@ -716,6 +737,16 @@ class CudaNetwork : public Network {
     auto t_start = std::chrono::high_resolution_clock::now();
 #endif
 
+    // 【魔改】双缓冲流水线：选择当前使用的buffer集合
+    // pipeline_enabled_时，交替使用tensor_mem_和tensor_mem_pingpong_
+    // 这样当前帧的compute可以与上一帧的D2H回传并行
+    DataType* active_tensor_mem[3];
+    if (pipeline_enabled_ && !multi_stream_ && current_buffer_index_ == 1) {
+      for (int i = 0; i < 3; i++) active_tensor_mem[i] = tensor_mem_pingpong_[i];
+    } else {
+      for (int i = 0; i < 3; i++) active_tensor_mem[i] = tensor_mem_[i];
+    }
+
     // Expand packed planes to full planes.
     uint64_t* ipDataMasks = io->input_masks_mem_gpu_;
     auto* ipDataValues = io->input_val_mem_gpu_;
@@ -738,7 +769,8 @@ class CudaNetwork : public Network {
       download_stream = io->download_stream_;
       cublas = io->cublas_;
     } else {
-      for (int i = 0; i < 3; i++) tensor_mem[i] = tensor_mem_[i];
+      // 【魔改】使用双缓冲选中的active_tensor_mem
+      for (int i = 0; i < 3; i++) tensor_mem[i] = active_tensor_mem[i];
       scratch_mem = scratch_mem_;
       offset_pointers = (DataType***)&offset_pointers_;
       head_offset_pointers = (DataType***)&head_offset_pointers_;
@@ -749,6 +781,12 @@ class CudaNetwork : public Network {
     }
 
     if (multi_stream_ || CUDA_GRAPH_SUPPORTS_EXTERNAL_EVENTS) {
+      // 【魔改】流水线模式：等待上一帧的D2H回传完成，确保ping-pong buffer可安全复用
+      if (pipeline_enabled_ && !multi_stream_ && pipeline_download_done_event_) {
+        ReportCUDAErrors(
+            cudaStreamWaitEvent(upload_stream, pipeline_download_done_event_, 0));
+      }
+
       ReportCUDAErrors(
           cudaMemcpyAsync(io->input_masks_mem_gpu_, io->input_masks_mem_,
                           batchSize * kInputPlanes * sizeof(uint64_t),
@@ -770,6 +808,8 @@ class CudaNetwork : public Network {
 #endif
     }
 
+    // 【魔改注释】expandPlanes将压缩的输入平面展开为完整张量
+    // 在compute_stream上执行，依赖upload_stream的H2D完成
     expandPlanes_NCHW(tensor_mem[0], ipDataMasks, ipDataValues,
                       batchSize * kInputPlanes, compute_stream);
 
@@ -906,16 +946,20 @@ class CudaNetwork : public Network {
                           compute_stream);  // pol FC  // POLICY
     }
     ReportCUDAErrors(cudaEventRecord(io->policy_done_event_, compute_stream));
+    // 【魔改注释】等待policy计算完成，然后在download_stream上启动D2H回传
+    // 这里实现了compute与D2H的stream级并行：policy的D2H可以与后续value head的compute并行
     ReportCUDAErrors(
         cudaStreamWaitEvent(download_stream, io->policy_done_event_, 0));
 
     // Copy policy output from device memory to host memory.
+    // 【魔改注释】policy D2H在download_stream上异步执行，不阻塞compute_stream
     ReportCUDAErrors(cudaMemcpyAsync(
         io->op_policy_mem_, io->op_policy_mem_gpu_,
         sizeof(io->op_policy_mem_[0]) * kNumOutputPolicy * batchSize,
         cudaMemcpyDeviceToHost, download_stream));
 
     // value head
+    // 【魔改注释】value head计算在compute_stream上执行，同时policy D2H在download_stream上并行
     network_[l++]->Eval(batchSize, (DataType*)opVal, flow, spare2, scratch_mem,
                         scratch_size_, nullptr, cublas,
                         compute_stream);  // value head
@@ -926,6 +970,7 @@ class CudaNetwork : public Network {
                                    capture ? cudaEventRecordExternal : 0));
 #endif
     }
+    // 【魔改注释】value D2H在download_stream上异步执行，可与moves_left head的compute并行
     ReportCUDAErrors(cudaEventRecord(io->value_done_event_, compute_stream));
     ReportCUDAErrors(
         cudaStreamWaitEvent(download_stream, io->value_done_event_, 0));
@@ -982,6 +1027,19 @@ class CudaNetwork : public Network {
           cudaEventRecord(io->download_done_event_, download_stream));
     }
 #endif
+
+    // 【魔改】双缓冲流水线：在计算完成后记录Event，标记当前帧的tensor_mem可被D2H使用
+    // 同时在D2H完成后记录Event，标记ping-pong buffer可被下一帧复用
+    if (pipeline_enabled_ && !multi_stream_ && !capture) {
+      // 记录compute完成Event（在所有kernel提交后）
+      ReportCUDAErrors(
+          cudaEventRecord(pipeline_compute_done_event_, compute_stream));
+      // 记录download完成Event（在D2H完成后）
+      ReportCUDAErrors(
+          cudaEventRecord(pipeline_download_done_event_, download_stream));
+      // 切换到下一帧的buffer索引（ping-pong交替）
+      current_buffer_index_ = 1 - current_buffer_index_;
+    }
   }
 
   void finishEval(InputsOutputs<DataType>* io, int batchSize) {
@@ -1022,6 +1080,16 @@ class CudaNetwork : public Network {
     if (!multi_stream_) {
       for (auto mem : tensor_mem_) {
         if (mem) ReportCUDAErrors(cudaFree(mem));
+      }
+      // 【魔改】释放双缓冲内存
+      if (pipeline_enabled_) {
+        for (auto mem : tensor_mem_pingpong_) {
+          if (mem) ReportCUDAErrors(cudaFree(mem));
+        }
+        if (pipeline_compute_done_event_)
+          ReportCUDAErrors(cudaEventDestroy(pipeline_compute_done_event_));
+        if (pipeline_download_done_event_)
+          ReportCUDAErrors(cudaEventDestroy(pipeline_download_done_event_));
       }
       if (offset_pointers_) ReportCUDAErrors(cudaFree(offset_pointers_));
       if (head_offset_pointers_)
@@ -1103,6 +1171,7 @@ class CudaNetwork : public Network {
                                           // tower
   bool multi_stream_;                     // run multiple parallel network evals
   bool allow_cache_opt_;  // try to fit residual block activations in L2 cache
+  bool pipeline_enabled_ = false;  // 【魔改】是否启用双缓冲流水线（ping-pong buffer），必须初始化否则showDeviceInfo()读取未定义值
 
   // Currently only one NN Eval can happen a time (we can fix this if needed
   // by allocating more memory).
@@ -1139,6 +1208,16 @@ class CudaNetwork : public Network {
   cudaEvent_t compute_ordering_event_ = nullptr;
   cublasHandle_t cublas_;
   DataType* tensor_mem_[3];
+
+  // 【魔改】双缓冲（ping-pong buffer）相关成员
+  // 第二套tensor内存，用于实现传输-计算流水线重叠
+  DataType* tensor_mem_pingpong_[3] = {nullptr, nullptr, nullptr};
+  // 流水线同步Event：标记第N帧计算完成，可以开始D2H回传
+  cudaEvent_t pipeline_compute_done_event_ = nullptr;
+  // 流水线同步Event：标记第N帧D2H完成，ping-pong buffer可复用
+  cudaEvent_t pipeline_download_done_event_ = nullptr;
+  // 当前使用哪一套buffer（0=主buffer, 1=ping-pong buffer）
+  int current_buffer_index_ = 0;
 
   mutable std::mutex inputs_outputs_lock_;
   std::list<std::unique_ptr<InputsOutputs<DataType>>> free_inputs_outputs_;
@@ -1207,6 +1286,10 @@ class CudaNetwork : public Network {
     if (std::is_same<float, DataType>::value && deviceProp.major >= 7) {
       CERR << "WARNING: you will probably get better performance from the "
               "cuda-fp16 backend.";
+    }
+    // 【魔改】显示流水线模式状态
+    if (pipeline_enabled_) {
+      CERR << "Pipeline mode: ENABLED (ping-pong double buffering)";
     }
   }
 };
@@ -1339,9 +1422,8 @@ std::unique_ptr<Network> MakeCudaNetworkAuto(
   cudaGetDeviceProperties(&deviceProp, gpu_id);
 
   // Check if the GPU supports FP16.
-  if (deviceProp.major >= 7 ||
-      (deviceProp.major == 6 && deviceProp.minor != 1) ||
-      (deviceProp.major == 5 && deviceProp.minor == 3)) {
+  // 魔改：强行在 GTX 970 (SM 5.2) 上允许加载 cuda-fp16 后端，实现半精度显存压缩
+  if (deviceProp.major >= 5) {
     CERR << "Switching to [cuda-fp16]...";
     return MakeCudaNetwork<half>(weights, options);
   }

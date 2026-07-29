@@ -32,9 +32,6 @@
 #include "selfplay/loop.h"
 #include "tools/backendbench.h"
 #include "tools/benchmark.h"
-#include "tools/describenet.h"
-#include "tools/leela2onnx.h"
-#include "tools/onnx2leela.h"
 #include "utils/commandline.h"
 #include "utils/esc_codes.h"
 #include "utils/logging.h"
@@ -96,11 +93,6 @@ int main(int argc, const char** argv) {
       CommandLine::RegisterMode("bench", "Very quick benchmark");
       CommandLine::RegisterMode("backendbench",
                                 "Quick benchmark of backend only");
-      CommandLine::RegisterMode("leela2onnx", "Convert Leela network to ONNX.");
-      CommandLine::RegisterMode("onnx2leela",
-                                "Convert ONNX network to Leela net.");
-      CommandLine::RegisterMode("describenet",
-                                "Shows details about the Leela network.");
     }
     for (const std::string_view search_name :
          SearchManager::Get()->GetSearchNames()) {
@@ -126,12 +118,6 @@ int main(int argc, const char** argv) {
       // Backend Benchmark mode.
       BackendBenchmark benchmark;
       benchmark.Run();
-    } else if (CommandLine::ConsumeCommand("leela2onnx")) {
-      lczero::ConvertLeelaToOnnx();
-    } else if (CommandLine::ConsumeCommand("onnx2leela")) {
-      lczero::ConvertOnnxToLeela();
-    } else if (CommandLine::ConsumeCommand("describenet")) {
-      lczero::DescribeNetworkCmd();
     } else {
       lczero::ChooseAndRunEngine();
     }
@@ -140,3 +126,4 @@ int main(int argc, const char** argv) {
     abort();
   }
 }
+

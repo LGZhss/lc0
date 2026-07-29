@@ -33,6 +33,10 @@
 namespace lczero {
 namespace cudnn_backend {
 
+// 【魔改注释】CUDA kernel函数声明
+// 所有kernel函数都接受cudaStream_t参数，支持多Stream并行执行
+// kernel在指定的stream上异步执行，通过Event实现流间同步
+
 // Adds two vectors (possibly of different sizes), also do optional
 // activation (relu, tanh or sigmoid).
 template <typename T>
@@ -164,9 +168,16 @@ void genOffsetPointers(T** offsets, int heads, int max_batch, int depth,
                        int d_model, T* k, T* q, T* b1, T* v, T* b2,
                        cudaStream_t stream);
 
+// 【魔改注释】融合多头注意力（Fused Multi-Head Attention）
+// 使用CUTLASS库实现，将QKV投影、注意力计算、输出投影融合为单个kernel
+// 仅在Ampere+(SM80+)架构上启用，GTX 970 (SM 5.2) 不支持
 void fusedMHA(void* output, void* mha_q, void* mha_k, void* mha_v, void* skip,
               int batch_size, int num_heads, int depth, cudaStream_t stream);
 
+// 【魔改注释】RPE（Relative Position Encoding）相关kernel
+// BT4魔改方案A已将RPE融合为Attention Bias，这些kernel保留但不再被主路径调用
+// multiplyRPEAttentionLogits: 计算RPE-Q或RPE-K的注意力偏置
+// multiplyRpeQKLogits: 同时计算RPE-Q和RPE-K的注意力偏置
 template <typename T>
 void multiplyRPEAttentionLogits(const T* rpeInput, const T* rpeWeights,
                                 const T* attnInput, T* output, int B, int H,

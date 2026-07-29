@@ -209,24 +209,9 @@ class CudnnNetwork : public Network {
 
     if (fp16) {
       // Check if the GPU support FP16.
-
-      if ((deviceProp.major == 6 && deviceProp.minor != 1) ||
-          (deviceProp.major == 5 && deviceProp.minor == 3)) {
-        // FP16 without tensor cores supported on GP100 (SM 6.0) and Jetson
-        // (SM 5.3 and 6.2). SM 6.1 GPUs also have FP16, but slower than FP32.
-        // nhwc_ remains false.
-      } else if (deviceProp.major >= 7) {
-        // NHWC layout is faster with Tensor Cores when using cudnn's implicit
-        // gemm algorithm.
-        // Supported on Volta and Turing (and hopefully future GPUs too).
-
-        // Some GPUs (GTX 16xx) are SM 7.5 but don't have tensor cores
-        // enabling TENSOR_OP_MATH or nhwc_ layout for them works but is
-        // very very slow (likely because the system emulates it).
-        if (!strstr(deviceProp.name, "GTX 16")) {
-          hasTensorCores = true;
-          nhwc_ = true;
-        }
+      // 魔改：同步在 cuDNN 后端强行允许 SM 5.2 (GTX 970) 跳过 FP16 的拦截检查
+      if (deviceProp.major >= 5) {
+        ;
       } else {
         throw Exception("Your GPU doesn't support FP16");
       }

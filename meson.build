@@ -193,9 +193,6 @@ files += [
   'src/selfplay/tournament.cc',
   'src/tools/backendbench.cc',
   'src/tools/benchmark.cc',
-  'src/tools/describenet.cc',
-  'src/tools/leela2onnx.cc',
-  'src/tools/onnx2leela.cc',
   'src/utils/histogram.cc',
   'src/utils/numa.cc',
   'src/utils/weights_adapter.cc',
@@ -224,21 +221,11 @@ else
 endif
 
 #############################################################################
-## DAG CLASSIC SEARCH
-#############################################################################
-if get_option('dag_classic')
-  files += [
-    'src/search/dag_classic/node.cc',
-    'src/search/dag_classic/search.cc',
-    'src/search/dag_classic/wrapper.cc',
-  ]
-endif
-
-#############################################################################
 ## BACKENDS
 #############################################################################
 
 if get_option('build_backends')
+
   ## ~~~~~~~~~~
   ## Tensorflow
   ## ~~~~~~~~~~
@@ -471,6 +458,8 @@ if get_option('build_backends')
       endif
     endforeach
     nvcc_io_arguments = ['-c', '@INPUT@', '-o', '@OUTPUT@']
+    # 【Cherry-pick来源: d8ce482】nvcc_io_arguments与nvcc_arguments分离，
+    # 以便在自动检测C++标准版本时，nvcc_arguments可以动态添加--std=c++NN参数
     nvcc_arguments = ['-I', meson.current_source_dir() + '/src']
     nvcc_arguments += ['-allow-unsupported-compiler']
     nvcc_help = run_command(nvcc, '-h', check : false).stdout()
@@ -526,6 +515,7 @@ if get_option('build_backends')
     endif
     nvcc_ok = true
 
+    # 【Cherry-pick来源: d8ce482】自动检测NVCC支持的C++标准版本
     nvcc_stdversion_list = [20, 17, 14]
     flag_not_supported = 'flag is not supported with the configured host compiler'
     nvcc_stdversion = 14
@@ -546,6 +536,9 @@ if get_option('build_backends')
     endforeach
     message('Detected NVCC C++ standard support: ' + nvcc_stdversion.to_string())
 
+    # 【Cherry-pick来源: d8ce482】自动检测最大CUDA架构
+    # 修复了Windows上nvcc --dryrun输出在stdout而非stderr的问题
+    # 修复了__CUDA_ARCH__解析：用split('=')替代substring(16)以兼容不同格式
     max_cuda = 0
     nvcc_status = run_command(nvcc, '--dryrun', nvcc_extra_args, nvcc_arguments, 'foo.cu', check : false)
     if host_machine.system() == 'windows'
@@ -577,6 +570,7 @@ if get_option('build_backends')
     includes += include_directories('src/neural/backends/cuda/')
 	 files += cuda_files
 
+    # 【Cherry-pick来源: d8ce482】CUTLASS需要C++17支持
     if get_option('cutlass') and max_cuda >= 800 and nvcc_stdversion >= 17
       message('Building with CUTLASS support')
       add_project_arguments('-DUSE_CUTLASS', language : 'cpp')

@@ -1,8 +1,33 @@
 @echo off
 setlocal
 
+rem 0. Isolate MSVC environment from MSYS64/MinGW paths
+set "TEMP_PATH="
+setlocal enabledelayedexpansion
+for %%a in ("%PATH:;=" "%") do (
+    set "part=%%~a"
+    if "!part!" neq "" (
+        echo !part! | findstr /I "msys64 mingw" >nul
+        if errorlevel 1 (
+            if "!TEMP_PATH!"=="" (
+                set "TEMP_PATH=!part!"
+            ) else (
+                set "TEMP_PATH=!TEMP_PATH!;!part!"
+            )
+        )
+    )
+)
+set "PATH=!TEMP_PATH!"
+setlocal disabledelayedexpansion
+
+
+rem 【Cherry-pick来源: d8ce482】CUDA arch自动检测逻辑已由meson.build实现，
+rem meson构建时会自动检测NVCC支持的C++标准版本和最大CUDA架构，
+rem 无需在build.cmd中手动指定-arch参数。native_cuda默认为true。
+rem 如需指定特定架构，可通过 -Dcc_cuda=52 参数传入（如GTX 970对应cc 5.2）。
+
 rem 1. Set the following for the options you want to build.
-set CUDNN=false
+set CUDNN=true
 set CUDA=true
 set DX12=false
 set OPENCL=false
@@ -23,7 +48,7 @@ if "%CUDA%"=="true" (
 
 rem 2. Edit the paths for the build dependencies.
 if not defined CUDA_PATH set CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9
-set CUDNN_PATH=%CUDA_PATH%
+if not defined CUDNN_PATH set CUDNN_PATH=%CUDA_PATH%
 set OPENCL_LIB_PATH=%CUDA_PATH%\lib\x64
 set OPENCL_INCLUDE_PATH=%CUDA_PATH%\include
 set OPENBLAS_PATH=C:\OpenBLAS
@@ -32,14 +57,18 @@ set DNNL_PATH=C:\dnnl_win_1.1.1_cpu_vcomp
 
 rem 3. In most cases you won't need to change anything further down.
 echo Deleting build directory:
-rd /s build
+rd /s /q build
 
 set CC=cl
 set CXX=cl
 set CC_LD=link
 set CXX_LD=link
 
-if exist "C:\Program Files\Microsoft Visual Studio\2022" (
+if exist "E:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools" (
+  where /q cl
+  if errorlevel 1 call "E:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvarsall.bat" amd64
+  set backend=vs2022
+) else if exist "C:\Program Files\Microsoft Visual Studio\2022" (
   where /q cl
   if errorlevel 1 call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvarsall.bat" amd64
   set backend=vs2022
@@ -77,9 +106,12 @@ meson setup build --backend %backend% --buildtype release -Ddx=%DX12% -Dcudnn=%C
 
 if errorlevel 1 exit /b
 
-pause
-
 cd build
 
-msbuild /m /p:Configuration=Release /p:Platform=x64 /p:WholeProgramOptimization=true ^
+set MSBUILD_CMD=msbuild
+if exist "E:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\MSBuild.exe" (
+  set MSBUILD_CMD="E:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\MSBuild.exe"
+)
+
+%MSBUILD_CMD% /m /p:Configuration=Release /p:Platform=x64 /p:WholeProgramOptimization=true ^
 /p:PreferredToolArchitecture=x64 lc0.sln /filelogger

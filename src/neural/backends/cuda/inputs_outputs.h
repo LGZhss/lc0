@@ -213,17 +213,28 @@ struct InputsOutputs {
   // memory needed to run the network owned by InputsOutputs when multi_stream
   // is enabled
   bool multi_stream_;
+  // 【魔改注释】tensor_mem_[3] 是网络推理用的3个张量缓冲区
+  // 在非multi_stream模式下，这些由CudaNetwork管理
+  // 在multi_stream模式下，每个InputsOutputs拥有自己的缓冲区以支持并行推理
   void* tensor_mem_[3];
   void* scratch_mem_;
   void** offset_pointers_ = nullptr;
   void** head_offset_pointers_ = nullptr;
 
-  // cuda stream used to run the network
+  // 【魔改注释】三流架构说明：
+  // - compute_stream: 执行CUDA kernel计算（卷积、GEMM、注意力等）
+  // - upload_stream: 执行H2D数据传输（输入数据上传到GPU）
+  // - download_stream: 执行D2H结果回传（策略、价值等输出下载到CPU）
+  // 通过cudaEvent实现流间同步，实现传输-计算重叠
   cudaStream_t compute_stream_ = nullptr;
   cudaStream_t upload_stream_ = nullptr;
   cudaStream_t download_stream_ = nullptr;
 
-  // cuda events to synchronize between streams
+  // 【魔改注释】Event同步机制说明：
+  // - upload_done_event: H2D传输完成，compute_stream可以开始计算
+  // - policy_done_event: policy head计算完成，download_stream可以开始D2H
+  // - value_done_event: value head计算完成，download_stream可以开始D2H
+  // - download_done_event: 所有D2H完成，CPU可以读取结果
   cudaEvent_t upload_done_event_ = nullptr;
   cudaEvent_t policy_done_event_ = nullptr;
   cudaEvent_t value_done_event_ = nullptr;

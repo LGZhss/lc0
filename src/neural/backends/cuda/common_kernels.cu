@@ -38,12 +38,19 @@ namespace lczero {
 namespace cudnn_backend {
 namespace {
 constexpr int kInputPlanes = 112;
+// 【魔改注释】RPE kernel的分片数，用于将长向量的点积分成2段并行计算
 constexpr int kNumRpeKernelSplits = 2;
 }  // namespace
 
 /////////////////////////////////////////////////////////////////////////////
 //          Simple CUDA kernels used by certain layers                     //
 /////////////////////////////////////////////////////////////////////////////
+
+// 【魔改注释】addVectors_kernel: 向量加法 + 激活函数
+// 支持不同大小的向量广播相加（bias add场景）
+// 所有kernel都通过stream参数支持多Stream并行
+// 【Cherry-pick来源: 3f37760】本文件中的FP16转换使用CUDA原生half类型，
+// 不受fp16_utils.h改动影响。fp16_utils.h的精度改进仅影响CPU端权重加载。
 
 template <typename T>
 __global__ void addVectors_kernel(T* c, T* a, T* b, int size, int asize,
@@ -1480,77 +1487,90 @@ __device__ __forceinline__ T dotProductSum(int x, const T* U, const T* V,
 }
 
 template <typename T>
-__global__ void rpeVectorMultiply_kernel(const T* rpeInput, const T* rpeWeights,
-                                         const T* skipAdd, T* output, int B,
-                                         int H, int Q, int K, int D,
-                                         float outScale, size_t rpetype) {
-  const int x = threadIdx.x + blockDim.x * blockIdx.x;
-  const int q = threadIdx.y + blockDim.y * blockIdx.y;
-  const int bh = threadIdx.z + blockDim.z * blockIdx.z;
-  const int h = bh % H;
-  const int b = bh / H;
-  const bool fp16 = std::is_same<half, T>::value;
-  const int lane = x & (kNumRpeKernelSplits - 1);
+__global__ void rpeVectorMultiply_coalesced_kernel(
+    const T* rpeInput, const T* rpeWeights, const T* skipAdd, T* output, int B,
+    int H, int Q, int K, int D, float outScale, size_t rpetype) {
+  int lane = threadIdx.x % 32;
+  int warpId = threadIdx.x / 32;
+  int idx = blockIdx.x * (blockDim.x / 32) + warpId;
 
   if (rpetype == 0) {
-    // RPE-Q
-    // rpeInput:   [B, Q, H, D] -> transpose to [B, H, Q, (1, D)]
-    // rpeWeights: [H, Q, K, D] -> transpose to [1, H, Q, (D, K)]
-    // output:     [B, H, Q, K]
+    // Q
+    int B_H_Q_K = B * H * Q * K;
+    if (idx >= B_H_Q_K) return;
 
-    // Read tensors per the input layouts and write out per the output layout.
-    // Sum is along the D dimension, and K is on the x-axis.
-    int k = x / kNumRpeKernelSplits;
-    if (b >= B || h >= H || q >= Q || k >= K) return;
+    int k = idx % K;
+    int q = (idx / K) % Q;
+    int h = (idx / (K * Q)) % H;
+    int b = idx / (K * Q * H);
 
-    const int tensorIndex = getTensorIndex(b, q, h, 0, B, Q, H, D);
-    const int weightIndex = getTensorIndex(h, q, k, 0, H, Q, K, D);
+    const T* U = rpeInput + ((b * Q + q) * H + h) * D;
+    const T* V = rpeWeights + ((h * Q + q) * K + k) * D;
 
-    T sum = dotProductSum(x, rpeInput + tensorIndex, rpeWeights + weightIndex,
-                          D, fp16);
+    float sum = 0;
+    for (int d = lane; d < D; d += 32) {
+      sum += (float)U[d] * (float)V[d];
+    }
+
+    __syncwarp();
+    for (int offset = 16; offset > 0; offset /= 2) {
+      sum += __shfl_down_sync(0xffffffff, sum, offset);
+    }
 
     if (lane == 0) {
-      int outIdx = getTensorIndex(b, h, q, k, B, H, Q, K);
-      output[outIdx] = ((T)sum + (T)skipAdd[outIdx]) * (T)outScale;
+      output[idx] = (T)(sum + (float)skipAdd[idx]) * (T)outScale;
     }
   } else if (rpetype == 1) {
-    // RPE-K
-    // rpeInput:   [B, K, H, D] -> transpose to [B, H, K, (1, D)]
-    // rpeWeights: [H, K, Q, D] -> transpose to [1, H, K, (D, Q)]
-    // output:     [B, H, Q, K]
+    // K
+    int B_H_Q_K = B * H * Q * K;
+    if (idx >= B_H_Q_K) return;
 
-    // Read tensors per the input layouts and write out per the output layout.
-    // Sum is along the D dimension, and K is on the x-axis.
-    int k = x / kNumRpeKernelSplits;
-    if (b >= B || h >= H || q >= Q || k >= K) return;
+    int k = idx % K;
+    int q = (idx / K) % Q;
+    int h = (idx / (K * Q)) % H;
+    int b = idx / (K * Q * H);
 
-    const int tensorIndex = getTensorIndex(b, k, h, 0, B, K, H, D);
-    const int weightIndex = getTensorIndex(h, k, q, 0, H, K, Q, D);
-    T sum = dotProductSum(x, rpeInput + tensorIndex, rpeWeights + weightIndex,
-                          D, fp16);
+    const T* U = rpeInput + ((b * K + k) * H + h) * D;
+    const T* V = rpeWeights + ((h * K + k) * Q + q) * D;
+
+    float sum = 0;
+    for (int d = lane; d < D; d += 32) {
+      sum += (float)U[d] * (float)V[d];
+    }
+
+    __syncwarp();
+    for (int offset = 16; offset > 0; offset /= 2) {
+      sum += __shfl_down_sync(0xffffffff, sum, offset);
+    }
+
     if (lane == 0) {
-      int outIdx = getTensorIndex(b, h, q, k, B, H, Q, K);
-      output[outIdx] = ((T)sum + (T)skipAdd[outIdx]) * (T)outScale;
+      output[idx] = (T)(sum + (float)skipAdd[idx]) * (T)outScale;
     }
   } else if (rpetype == 2) {
-    // RPE-V
-    // rpeInput:   [B, H, Q, K] -> transpose to [B, H, Q, (1, K)]
-    // rpeWeights: [H, Q, D, K] -> transpose to [1, H, Q, (K, D)]
-    // output:     [B, Q, H, D]
-    // The skip connection is also already in BQHD order.
+    // V
+    int B_Q_H_D = B * Q * H * D;
+    if (idx >= B_Q_H_D) return;
 
-    // Read tensors per the input layouts and write out per the output layout.
-    // Sum is along the K dimension, and D is on the x-axis.
-    int d = x / kNumRpeKernelSplits;
-    if (b >= B || h >= H || q >= Q || d >= D) return;
+    int d = idx % D;
+    int h = (idx / D) % H;
+    int q = (idx / (D * H)) % Q;
+    int b = idx / (D * H * Q);
 
-    const int tensorIndex = getTensorIndex(b, h, q, 0, B, H, Q, K);
-    const int weightIndex = getTensorIndex(h, q, d, 0, H, Q, D, K);
-    T sum = dotProductSum(x, rpeInput + tensorIndex, rpeWeights + weightIndex,
-                          K, fp16);
+    const T* U = rpeInput + ((b * H + h) * Q + q) * K;
+    const T* V = rpeWeights + ((h * Q + q) * D + d) * K;
+
+    float sum = 0;
+    for (int k = lane; k < K; k += 32) {
+      sum += (float)U[k] * (float)V[k];
+    }
+
+    __syncwarp();
+    for (int offset = 16; offset > 0; offset /= 2) {
+      sum += __shfl_down_sync(0xffffffff, sum, offset);
+    }
+
     if (lane == 0) {
-      int outIdx = getTensorIndex(b, q, h, d, B, Q, H, D);
-      output[outIdx] = ((T)sum + (T)skipAdd[outIdx]) * (T)outScale;
+      output[idx] = (T)(sum + (float)skipAdd[idx]) * (T)outScale;
     }
   }
 }
@@ -1564,85 +1584,57 @@ void multiplyRPEAttentionLogits(const T* rpeInput, const T* rpeWeights,
     throw Exception("unsupported rpetype in multiplyRPEAttentionLogits.");
   }
 
-  // rpeType:    Q            | K            | V
-  // rpeInput:   [B, Q, H, D] | [B, K, H, D] | [B, H, Q, K]
-  // rpeWeights: [H, Q, K, D] | [H, K, Q, D] | [H, Q, D, K]
-  // attnInput:  [B, H, Q, K] | [B, H, Q, K] | [B, Q, H, D]
+  int total_items = (rpetype == 2) ? (B * Q * H * D) : (B * H * Q * K);
+  int threads_per_block = 256;
+  int warps_per_block = threads_per_block / 32;
+  int blocks = DivUp(total_items, warps_per_block);
 
-  // int lda = (rpetype == 2) ? K : D;
-  // if (lda > 64 || rpetype != 0) {
-#if 1
-  // 3D block structure where x-axis maps to K (or D for rpetype==2), y-axis to
-  // Q and z-axis to BH. Each thread calculates the vector sum-product for the
-  // cube at BHQK | BHQD (i.e. "d,dk->k" | "d,dq->q" | "k,kd->d").
-  dim3 blockDim, gridDim;
-  int X = rpetype == 2 ? D : K;
-  blockDim.x = std::min(32, X);
-  blockDim.y = std::min(16, Q);
-  blockDim.z = std::min(std::max(512 / (blockDim.x * blockDim.y), 1u),
-                        (unsigned int)(B * H));
-  gridDim.x = DivUp(X * kNumRpeKernelSplits, blockDim.x);
-  gridDim.y = DivUp(Q, blockDim.y);
-  gridDim.z = DivUp(B * H, blockDim.z);
-
-  rpeVectorMultiply_kernel<T><<<gridDim, blockDim, 0, stream>>>(
+  rpeVectorMultiply_coalesced_kernel<T><<<blocks, threads_per_block, 0, stream>>>(
       rpeInput, rpeWeights, attnInput, output, B, H, Q, K, D, outScale,
       rpetype);
-#else
-  // } else {
-  // 3D block structure where x-axis maps to D (or K for rpetype==2), y-axis
-  // maps to K (or D for rpetype==2) and z-axis to BQH. Each thread calculates
-  // the product while the warp-sum does the sum of the vector dot-product.
-  dim3 blockDim, gridDim;
-  int Y = rpetype == 2 ? D : K;
-  blockDim.x = std::min(64, lda);
-  blockDim.y = std::min(DivUp(1024, blockDim.x), Y);
-  blockDim.z = std::max(1024 / (blockDim.x * blockDim.y), 1u);
-  gridDim.x = 1;
-  gridDim.y = DivUp(Y, blockDim.y);
-  gridDim.z = DivUp(B * H * Q, blockDim.z);
 
-  rpeVectorMultiply_parallel_kernel<T><<<gridDim, blockDim, 0, stream>>>(
-      rpeInput, rpeWeights, attnInput, output, B, H, Q, K, D, outScale,
-      rpetype);
-#endif
-  // }
   ReportCUDAErrors(cudaGetLastError());
 }
 
 template <typename T>
-__global__ void rpeQK_multiply_kernel(const T* rpeInputQ, const T* rpeWeightsQ,
-                                      const T* rpeInputK, const T* rpeWeightsK,
-                                      const T* skipAdd, T* output, int B, int H,
-                                      int Q, int K, int D, float outScale) {
-  // Fused version of rpeVectorMultiply_kernel for RPE-Q and RPE-K.
-  const int x = threadIdx.x + blockDim.x * blockIdx.x;
-  const int q = threadIdx.y + blockDim.y * blockIdx.y;
-  const int bh = threadIdx.z + blockDim.z * blockIdx.z;
-  const int h = bh % H;
-  const int b = bh / H;
-  const bool fp16 = std::is_same<half, T>::value;
-  const int lane = x & (kNumRpeKernelSplits - 1);
+__global__ void rpeQK_multiply_coalesced_kernel(
+    const T* rpeInputQ, const T* rpeWeightsQ, const T* rpeInputK,
+    const T* rpeWeightsK, const T* skipAdd, T* output, int B, int H, int Q,
+    int K, int D, float outScale) {
+  int lane = threadIdx.x % 32;
+  int warpId = threadIdx.x / 32;
+  int idx = blockIdx.x * (blockDim.x / 32) + warpId;
+  int B_H_Q_K = B * H * Q * K;
+  if (idx >= B_H_Q_K) return;
 
-  // Read tensors per the input layouts and write out per the output layout.
-  // Sum is along the D dimension, and K is on the x-axis.
-  int k = x / kNumRpeKernelSplits;
-  if (b >= B || h >= H || q >= Q || k >= K) return;
+  int k = idx % K;
+  int q = (idx / K) % Q;
+  int h = (idx / (K * Q)) % H;
+  int b = idx / (K * Q * H);
 
-  // RPE-Q sum
-  const int tidxq = getTensorIndex(b, q, h, 0, B, Q, H, D);
-  const int widxq = getTensorIndex(h, q, k, 0, H, Q, K, D);
-  T sum1 = dotProductSum(x, rpeInputQ + tidxq, rpeWeightsQ + widxq, D, fp16);
+  // RPE-Q pointers
+  const T* U_q = rpeInputQ + ((b * Q + q) * H + h) * D;
+  const T* V_q = rpeWeightsQ + ((h * Q + q) * K + k) * D;
 
-  // RPE-K sum.
-  const int tidxk = getTensorIndex(b, k, h, 0, B, K, H, D);
-  const int widxk = getTensorIndex(h, k, q, 0, H, K, Q, D);
-  T sum2 = dotProductSum(x, rpeInputK + tidxk, rpeWeightsK + widxk, D, fp16);
+  // RPE-K pointers
+  const T* U_k = rpeInputK + ((b * K + k) * H + h) * D;
+  const T* V_k = rpeWeightsK + ((h * K + k) * Q + q) * D;
 
-  // Write out the result.
+  float sum1 = 0;
+  float sum2 = 0;
+  for (int d = lane; d < D; d += 32) {
+    sum1 += (float)U_q[d] * (float)V_q[d];
+    sum2 += (float)U_k[d] * (float)V_k[d];
+  }
+
+  __syncwarp();
+  for (int offset = 16; offset > 0; offset /= 2) {
+    sum1 += __shfl_down_sync(0xffffffff, sum1, offset);
+    sum2 += __shfl_down_sync(0xffffffff, sum2, offset);
+  }
+
   if (lane == 0) {
-    int outIdx = getTensorIndex(b, h, q, k, B, H, Q, K);
-    output[outIdx] = (T)(sum1 + sum2 + skipAdd[outIdx]) * (T)outScale;
+    output[idx] = (T)(sum1 + sum2 + (float)skipAdd[idx]) * (T)outScale;
   }
 }
 
@@ -1651,20 +1643,12 @@ void multiplyRpeQKLogits(const T* rpeInputQ, const T* rpeWeightsQ,
                          const T* rpeInputK, const T* rpeWeightsK,
                          const T* attnInput, T* output, int B, int H, int Q,
                          int K, int D, float outScale, cudaStream_t stream) {
-  // rpeType:    Q            | K
-  // rpeInput:   [B, Q, H, D] | [B, K, H, D]
-  // rpeWeights: [H, Q, K, D] | [H, K, Q, D]
-  // attnInput:  [B, H, Q, K] | [B, H, Q, K]
-  dim3 blockDim, gridDim;
-  blockDim.x = std::min(32, K);
-  blockDim.y = std::min(16, Q);
-  blockDim.z = std::min(std::max(512 / (blockDim.x * blockDim.y), 1u),
-                        (unsigned int)(B * H));
-  gridDim.x = DivUp(K * kNumRpeKernelSplits, blockDim.x);
-  gridDim.y = DivUp(Q, blockDim.y);
-  gridDim.z = DivUp(B * H, blockDim.z);
+  int total_items = B * H * Q * K;
+  int threads_per_block = 256;
+  int warps_per_block = threads_per_block / 32;
+  int blocks = DivUp(total_items, warps_per_block);
 
-  rpeQK_multiply_kernel<T><<<gridDim, blockDim, 0, stream>>>(
+  rpeQK_multiply_coalesced_kernel<T><<<blocks, threads_per_block, 0, stream>>>(
       rpeInputQ, rpeWeightsQ, rpeInputK, rpeWeightsK, attnInput, output, B, H,
       Q, K, D, outScale);
 

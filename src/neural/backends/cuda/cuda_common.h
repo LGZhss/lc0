@@ -45,11 +45,14 @@ typedef void* cudnnHandle_t;
 namespace lczero {
 namespace cudnn_backend {
 
+// 【魔改注释】策略输出的维度（1858个合法走法）
 static constexpr int kNumOutputPolicy = 1858;
 
 // max supported filter count for fast path
 // TODO: extend it to cover bigger networks!
 // (We are limited by no of registers per thread)
+// 【魔改注释】Winograd融合优化的最大通道数限制
+// 超过此限制时回退到非融合路径
 static constexpr int kMaxResBlockFusingChannels = 384;  // limit on num_filters
 static constexpr int kMaxResBlockFusingSeKFp16Ampere =
     512;  // (use a different kernel with reduced register pressure)

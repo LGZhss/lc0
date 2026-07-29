@@ -2018,6 +2018,16 @@ void SearchWorker::ExtendNode(Node* node, int depth,
 // 2b. Copy collisions into shared collisions.
 void SearchWorker::CollectCollisions() {
   LCTRACE_FUNCTION_SCOPE;
+  // 【魔改核心】：多线程无锁预检，避免在无碰撞时无意义地抢占全局 mutex 锁，降低锁争用开销
+  bool has_collision = false;
+  for (const NodeToProcess& node_to_process : minibatch_) {
+    if (node_to_process.IsCollision()) {
+      has_collision = true;
+      break;
+    }
+  }
+  if (!has_collision) return;
+
   SharedMutex::Lock lock(search_->nodes_mutex_);
 
   for (const NodeToProcess& node_to_process : minibatch_) {

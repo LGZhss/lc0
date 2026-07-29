@@ -27,6 +27,9 @@
 #pragma once
 
 #include <cstdint>
+// 【Cherry-pick来源: 3f37760】使用bit_cast替代memcpy进行FP16转换，
+// 提升转换精度和类型安全性。bit_cast在C++20中为std::bit_cast，
+// 低版本编译器使用自定义实现（见utils/bit.h）
 
 #include "utils/bit.h"
 
@@ -41,6 +44,8 @@
 
 namespace lczero {
 
+// 【Cherry-pick来源: 3f37760】添加__F16C__/__aarch64__条件检查，
+// 确保HAS_FLOAT16路径仅在硬件真正支持F16C或ARM时启用
 #if defined(HAS_FLOAT16) && (defined(__F16C__) || defined(__aarch64__))
 
 inline uint16_t FP32toFP16(float f32) {
@@ -68,6 +73,9 @@ inline float FP16toFP32(uint16_t f16) {
 }
 
 #else
+// 【Cherry-pick来源: 3f37760】软件FP16转换实现
+// 改进了round-to-nearest-even精度，使用branchless算法
+// 参考自 https://gist.github.com/rygorous/2156668
 
 inline uint16_t FP32toFP16(float f32) {
   uint32_t x = bit_cast<uint32_t>(f32);
@@ -97,6 +105,9 @@ inline uint16_t FP32toFP16(float f32) {
 }
 
 inline float FP16toFP32(uint16_t f16) {
+  // 【Cherry-pick来源: 3f37760】改进的FP16到FP32转换
+  // 使用int16_t符号扩展处理负数subnormal值
+  // sNaN转qNaN行为与Intel一致
   int32_t s = static_cast<int16_t>(f16);
   uint32_t x;
   float f;

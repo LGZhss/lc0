@@ -28,6 +28,10 @@
 #include "neural/backends/cuda/cuda_common.h"
 
 // Fused MHA implementation from cutlass example #41
+// 【魔改注释】CUTLASS融合多头注意力实现
+// 注意：此实现硬编码了 cutlass::arch::Sm80 (Ampere架构)
+// 在GTX 970 (SM 5.2, Maxwell架构) 上无法运行
+// BT4魔改分支在SM 5.2上使用传统的cublasXGemmBatched路径代替
 #include "fused_multi_head_attention/kernel_forward.h"
 #include "utils/exception.h"
 
@@ -38,6 +42,10 @@ template <bool bias>
 void fusedMHACutlass(void* output, void* q, void* k, void* v, void* skip,
                      int batch_size, int num_heads, int depth,
                      cudaStream_t stream) {
+  // 【魔改注释】CUTLASS MHA kernel配置
+  // kQueriesPerBlock=64, kKeysPerBlock=64: 与国际象棋的8x8=64棋盘格对应
+  // kSingleValueIteration=true: 因为head_dim通常不超过64
+  // ArchTag=Sm80: 仅支持Ampere及以上架构
   cutlass::half_t* mha_q = (cutlass::half_t*)q;
   cutlass::half_t* mha_k = (cutlass::half_t*)k;
   cutlass::half_t* mha_v = (cutlass::half_t*)v;

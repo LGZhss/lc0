@@ -46,6 +46,11 @@ namespace cudnn_backend {
 
 // The Layer objects only hold memory for weights, biases, etc
 // memory for input and output tensors is provided by caller of Eval.
+//
+// 【魔改注释】Layer架构说明：
+// 每个Layer的Eval方法接受cudaStream_t参数，所有计算在指定stream上执行
+// 这使得多Stream并行成为可能：不同Layer可以在不同stream上并行运行
+// 当前实现中，所有Layer共享同一个compute_stream，通过Event与upload/download stream同步
 
 template <typename DataType>
 class BaseLayer {
@@ -62,6 +67,8 @@ class BaseLayer {
   size_t GetOutputSize(int N) const { return sizeof(DataType) * N * C * H * W; }
 
   // Input2 is optional (skip connection).
+  // 【魔改注释】Eval是每个Layer的核心执行方法
+  // stream参数指定执行计算的CUDA stream，支持多Stream并行
   virtual void Eval(int N, DataType* output, const DataType* input,
                     const DataType* input2, void* scratch, size_t scratch_size,
                     cudnnHandle_t cudnn, cublasHandle_t cublas,
@@ -355,6 +362,8 @@ class EncoderBlock {
   DataType *mha_v_w, *mha_v_b;
   DataType *mha_qkv_w, *mha_qkv_b;
   DataType *mha_dense_w, *mha_dense_b;
+  // 【魔改注释】RPE权重：BT4方案A已将RPE融合为Attention Bias
+  // 这些字段保留用于向后兼容，但主路径不再使用
   DataType *mha_rpe_q, *mha_rpe_k, *mha_rpe_v;
   DataType *mha_rpe_factorizer;
 

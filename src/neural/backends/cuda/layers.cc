@@ -37,8 +37,17 @@
 #include "utils/fp16_utils.h"
 
 namespace lczero {
+namespace cudnn_backend {
 
-#if 1
+template <typename DataType>
+void cublasXgemm(cublasHandle_t handle, cublasOperation_t transa,
+                 cublasOperation_t transb, int m, int n, int k,
+                 float alpha, const DataType* A, int lda,
+                 const DataType* B, int ldb, float beta, DataType* C,
+                 int ldc);
+
+}  // namespace cudnn_backend
+
 // function to calculate mean
 static float mean(float arr[], int n) {
   float sum = 0;
@@ -59,6 +68,7 @@ static float stdDev(float arr[], int n) {
   return sqrt(var);  // return the square root of variance
 }
 
+#if 1
 // debug code to dump allocation in GPU memory
 template <typename T>
 void dumpTensor(T* memory, int elements, const char* message, int lines = -1,
@@ -566,20 +576,14 @@ void SELayer<half>::Eval(int N, half* output, const half* input,
     globalAvgPool(N, C, op2, input, bPrev_, nhwc_, stream);
 
     // 2. First fully connected layer.
-    __half_raw one_h{0x3C00};
-    __half_raw zero_h{0};
-    half alpha = one_h;
-    half beta = zero_h;
-    ReportCUBLASErrors(cublasHgemm(cublas, CUBLAS_OP_T, CUBLAS_OP_N, numFc1Out_,
-                                   N, C, &alpha, w1_, C, op2, C, &beta, op1,
-                                   numFc1Out_));
+    cublasXgemm<half>(cublas, CUBLAS_OP_T, CUBLAS_OP_N, numFc1Out_, N, C, 1.0f,
+                      w1_, C, op2, C, 0.0f, op1, numFc1Out_);
     addVectors(op1, b1_, op1, numFc1Out_ * N, numFc1Out_, numFc1Out_ * N, act_,
                stream);
 
     // 3. Second fully connected layer.
-    ReportCUBLASErrors(cublasHgemm(cublas, CUBLAS_OP_T, CUBLAS_OP_N, 2 * C, N,
-                                   numFc1Out_, &alpha, w2_, numFc1Out_, op1,
-                                   numFc1Out_, &beta, op2, 2 * C));
+    cublasXgemm<half>(cublas, CUBLAS_OP_T, CUBLAS_OP_N, 2 * C, N, numFc1Out_,
+                      1.0f, w2_, numFc1Out_, op1, numFc1Out_, 0.0f, op2, 2 * C);
     addVectors(op2, b2_, op2, 2 * C * N, 2 * C, 2 * C * N, ACTIVATION_NONE,
                stream);
 
@@ -658,15 +662,9 @@ void FCLayer<half>::Eval(int N, half* output_tensor, const half* input_tensor,
   const int num_outputs = C * H * W;
   const int num_inputs = input_->GetC() * input_->GetH() * input_->GetW();
 
-  // half alpha = float2half_rn(1.0f), beta = float2half_rn(0.0f);
-  const __half_raw one_h{0x3C00};
-  const __half_raw zero_h{0};
-  half alpha = one_h;
-  half beta = zero_h;
-  ReportCUBLASErrors(cublasHgemm(cublas, CUBLAS_OP_T, CUBLAS_OP_N, num_outputs,
-                                 N, num_inputs, &alpha, weights_, num_inputs,
-                                 input_tensor, num_inputs, &beta, output_tensor,
-                                 num_outputs));
+  cublasXgemm<half>(cublas, CUBLAS_OP_T, CUBLAS_OP_N, num_outputs, N,
+                    num_inputs, 1.0f, weights_, num_inputs, input_tensor,
+                    num_inputs, 0.0f, output_tensor, num_outputs);
 
   if (use_bias_ || (act_ != ACTIVATION_NONE)) {
     addVectors(output_tensor, biases_, output_tensor, num_outputs * N,
@@ -1430,35 +1428,85 @@ ResidualBlock<DataType>::~ResidualBlock() {
   }
 }
 
+// 【魔改 P1】CPU 侧 FP16 预量化后直接上传到 GPU（half backend 时）
+// 旧流程: CPU float32 → H2D cudaMemcpy → GPU copyTypeConverted kernel → half
+// 新流程: CPU float32 → 软件 FP16 转换 → H2D cudaMemcpy(half)
+// 收益: 省掉 ~15 个 GPU kernel launch + 省掉 scratch 缓冲区
+// 注: 这是一次性操作，主要影响启动时间而非推理 NPS
 template <typename DataType>
 void allocAndUpload(DataType** gpu_dest, std::vector<float> cpu_src,
-                    void* scratch) {
-  size_t size = cpu_src.size() * sizeof(DataType);
+                    void* /*scratch*/) {
+  size_t num_elems = cpu_src.size();
+  size_t size = num_elems * sizeof(DataType);
   if (size == 0) {
     *gpu_dest = nullptr;
     return;
   }
   ReportCUDAErrors(cudaMalloc(gpu_dest, size));
-  ReportCUDAErrors(cudaMemcpy(scratch, &cpu_src[0],
-                              cpu_src.size() * sizeof(float),
-                              cudaMemcpyHostToDevice));
-  copyTypeConverted((DataType*)(*gpu_dest), (float*)scratch,
-                    (int)cpu_src.size(), 0);
+
+  const bool is_fp16 = std::is_same<half, DataType>::value;
+  if (is_fp16) {
+    // FP16 后端: CPU 预量化后直接上传 half 数据
+    // 用 fp16_utils.h 的 FP32toFP16（branchless 软件实现或 F16C intrinsic）
+    std::vector<uint16_t> cpu_half(num_elems);
+    for (size_t i = 0; i < num_elems; ++i) {
+      cpu_half[i] = FP32toFP16(cpu_src[i]);
+    }
+    ReportCUDAErrors(cudaMemcpy(*gpu_dest, cpu_half.data(), size,
+                                cudaMemcpyHostToDevice));
+  } else {
+    // FP32 后端: 直接上传 float32
+    ReportCUDAErrors(cudaMemcpy(*gpu_dest, cpu_src.data(), size,
+                                cudaMemcpyHostToDevice));
+  }
 }
 
+// 【魔改 P4】上传到已分配的 GPU buffer 中的指定偏移位置
+// 用于避免 Q/K/V 分开上传后再 D2D 合并的浪费
 template <typename DataType>
-static void cublasXgemm(cublasHandle_t handle, cublasOperation_t transa,
-                        cublasOperation_t transb, int m, int n, int k,
-                        float alpha, const DataType* A, int lda,
-                        const DataType* B, int ldb, float beta, DataType* C,
-                        int ldc) {
+static void uploadToOffset(DataType* gpu_base, size_t offset_elements,
+                           const std::vector<float>& cpu_src) {
+  size_t num_elems = cpu_src.size();
+  size_t size = num_elems * sizeof(DataType);
+  if (size == 0) return;
+
+  const bool is_fp16 = std::is_same<half, DataType>::value;
+  DataType* gpu_dest = gpu_base + offset_elements;
+
+  if (is_fp16) {
+    std::vector<uint16_t> cpu_half(num_elems);
+    for (size_t i = 0; i < num_elems; ++i) {
+      cpu_half[i] = FP32toFP16(cpu_src[i]);
+    }
+    ReportCUDAErrors(cudaMemcpy(gpu_dest, cpu_half.data(), size,
+                                cudaMemcpyHostToDevice));
+  } else {
+    ReportCUDAErrors(cudaMemcpy(gpu_dest, cpu_src.data(), size,
+                                cudaMemcpyHostToDevice));
+  }
+}
+
+}  // namespace cudnn_backend
+}  // namespace lczero
+
+namespace lczero {
+namespace cudnn_backend {
+
+template <typename DataType>
+void cublasXgemm(cublasHandle_t handle, cublasOperation_t transa,
+                 cublasOperation_t transb, int m, int n, int k,
+                 float alpha, const DataType* A, int lda,
+                 const DataType* B, int ldb, float beta, DataType* C,
+                 int ldc) {
   const bool fp16 = std::is_same<half, DataType>::value;
   if (fp16) {
-    unsigned short alpha_h = FP32toFP16(alpha);
-    unsigned short beta_h = FP32toFP16(beta);
-    ReportCUBLASErrors(cublasHgemm(
-        handle, transa, transb, m, n, k, (const half*)&alpha_h, (const half*)A,
-        lda, (const half*)B, ldb, (const half*)&beta_h, (half*)C, ldc));
+    // 魔改：使用 cublasGemmEx 进行混合精度计算
+    // 输入 A, B, C 为 CUDA_R_16F (FP16 存储以减半显存带宽开销)
+    // 但计算精度强制设为 CUBLAS_COMPUTE_32F (在 GTX 970 上使用 FP32 计算单元，规避 ARCH_MISMATCH 崩溃)
+    ReportCUBLASErrors(cublasGemmEx(
+        handle, transa, transb, m, n, k, &alpha,
+        A, CUDA_R_16F, lda, B, CUDA_R_16F, ldb,
+        &beta, C, CUDA_R_16F, ldc, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT));
   } else {
     ReportCUBLASErrors(cublasSgemm(handle, transa, transb, m, n, k, &alpha,
                                    (const float*)A, lda, (const float*)B, ldb,
@@ -1474,12 +1522,11 @@ static void cublasXGemmStridedBatched(
     float beta, void* C, int ldc, long long int strideC, int batchCount) {
   const bool fp16 = std::is_same<half, DataType>::value;
   if (fp16) {
-    unsigned short alpha_h = FP32toFP16(alpha);
-    unsigned short beta_h = FP32toFP16(beta);
+    // 同样在 strided batched GEMM 中强行指定使用 CUBLAS_COMPUTE_32F
     ReportCUBLASErrors(cublasGemmStridedBatchedEx(
-        handle, transa, transb, m, n, k, &alpha_h, A, CUDA_R_16F, lda, strideA,
-        B, CUDA_R_16F, ldb, strideB, &beta_h, C, CUDA_R_16F, ldc, strideC,
-        batchCount, CUDA_R_16F, CUBLAS_GEMM_DEFAULT));
+        handle, transa, transb, m, n, k, &alpha, A, CUDA_R_16F, lda, strideA,
+        B, CUDA_R_16F, ldb, strideB, &beta, C, CUDA_R_16F, ldc, strideC,
+        batchCount, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT));
   } else {
     ReportCUBLASErrors(cublasGemmStridedBatchedEx(
         handle, transa, transb, m, n, k, &alpha, A, CUDA_R_32F, lda, strideA, B,
@@ -1496,11 +1543,11 @@ static void cublasXGemmBatched(cublasHandle_t handle, cublasOperation_t transa,
                                int batchCount) {
   const bool fp16 = std::is_same<half, DataType>::value;
   if (fp16) {
-    unsigned short alpha_h = FP32toFP16(alpha);
-    unsigned short beta_h = FP32toFP16(beta);
-    ReportCUBLASErrors(cublasHgemmBatched(
-        handle, transa, transb, m, n, k, (const half*)&alpha_h, (half**)A, lda,
-        (half**)B, ldb, (const half*)&beta_h, (half**)C, ldc, batchCount));
+    // 针对 batched GEMM，使用 cublasGemmBatchedEx，输入为 FP16，计算类型为 FP32
+    ReportCUBLASErrors(cublasGemmBatchedEx(
+        handle, transa, transb, m, n, k, &alpha, (const void**)A, CUDA_R_16F, lda,
+        (const void**)B, CUDA_R_16F, ldb, &beta, (void**)C, CUDA_R_16F, ldc,
+        batchCount, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT));
   } else {
     ReportCUBLASErrors(cublasSgemmBatched(
         handle, transa, transb, m, n, k, &alpha, (float**)A, lda, (float**)B,
@@ -1595,36 +1642,33 @@ EncoderBlock<DataType>::EncoderBlock(
   ffn_dense1_size_ = cpu_weights.ffn.dense1_b.size();
   ffn_dense2_size_ = cpu_weights.ffn.dense2_b.size();
 
-  allocAndUpload<DataType>(&mha_q_w, cpu_weights.mha.q_w, scratch);
-  allocAndUpload<DataType>(&mha_q_b, cpu_weights.mha.q_b, scratch);
-
-  allocAndUpload<DataType>(&mha_k_w, cpu_weights.mha.k_w, scratch);
-  allocAndUpload<DataType>(&mha_k_b, cpu_weights.mha.k_b, scratch);
-
-  allocAndUpload<DataType>(&mha_v_w, cpu_weights.mha.v_w, scratch);
-  allocAndUpload<DataType>(&mha_v_b, cpu_weights.mha.v_b, scratch);
-
-  // big allocation to hold qkv weights one after the other
+  // 【魔改 P4】直接把 Q/K/V 权重上传到连续的 mha_qkv_w 缓冲区
+  // 旧流程: 分别 cudaMalloc → H2D → 再 cudaMalloc → 3次 D2D 拷贝
+  // 新流程: 一次 cudaMalloc → 3 次偏移 H2D（省掉 3 次 cudaMalloc + 3 次 D2D）
   {
-    size_t elements = cpu_weights.mha.q_w.size();
-    size_t size = elements * sizeof(DataType) * 3;
-    ReportCUDAErrors(cudaMalloc(&mha_qkv_w, size));
-    ReportCUDAErrors(
-        cudaMemcpy(mha_qkv_w, mha_q_w, size / 3, cudaMemcpyDeviceToDevice));
-    ReportCUDAErrors(cudaMemcpy(mha_qkv_w + elements, mha_k_w, size / 3,
-                                cudaMemcpyDeviceToDevice));
-    ReportCUDAErrors(cudaMemcpy(mha_qkv_w + elements * 2, mha_v_w, size / 3,
-                                cudaMemcpyDeviceToDevice));
+    size_t w_elements = cpu_weights.mha.q_w.size();
+    size_t w_size = w_elements * sizeof(DataType) * 3;
 
-    elements = cpu_weights.mha.q_b.size();
-    size = elements * sizeof(DataType) * 3;
-    ReportCUDAErrors(cudaMalloc(&mha_qkv_b, size));
-    ReportCUDAErrors(
-        cudaMemcpy(mha_qkv_b, mha_q_b, size / 3, cudaMemcpyDeviceToDevice));
-    ReportCUDAErrors(cudaMemcpy(mha_qkv_b + elements, mha_k_b, size / 3,
-                                cudaMemcpyDeviceToDevice));
-    ReportCUDAErrors(cudaMemcpy(mha_qkv_b + elements * 2, mha_v_b, size / 3,
-                                cudaMemcpyDeviceToDevice));
+    // 权重: 一次分配，三段上传
+    ReportCUDAErrors(cudaMalloc(&mha_qkv_w, w_size));
+    uploadToOffset<DataType>(mha_qkv_w, 0, cpu_weights.mha.q_w);
+    uploadToOffset<DataType>(mha_qkv_w, w_elements, cpu_weights.mha.k_w);
+    uploadToOffset<DataType>(mha_qkv_w, 2 * w_elements, cpu_weights.mha.v_w);
+    // 别名指针，供可能引用 mha_q_w/mha_k_w/mha_v_w 的路径使用
+    mha_q_w = mha_qkv_w;
+    mha_k_w = mha_qkv_w + w_elements;
+    mha_v_w = mha_qkv_w + 2 * w_elements;
+
+    // Bias: 同样一次分配，三段上传
+    size_t b_elements = cpu_weights.mha.q_b.size();
+    size_t b_size = b_elements * sizeof(DataType) * 3;
+    ReportCUDAErrors(cudaMalloc(&mha_qkv_b, b_size));
+    uploadToOffset<DataType>(mha_qkv_b, 0, cpu_weights.mha.q_b);
+    uploadToOffset<DataType>(mha_qkv_b, b_elements, cpu_weights.mha.k_b);
+    uploadToOffset<DataType>(mha_qkv_b, 2 * b_elements, cpu_weights.mha.v_b);
+    mha_q_b = mha_qkv_b;
+    mha_k_b = mha_qkv_b + b_elements;
+    mha_v_b = mha_qkv_b + 2 * b_elements;
   }
 
   allocAndUpload<DataType>(&mha_dense_w, cpu_weights.mha.dense_w, scratch);
@@ -1765,12 +1809,10 @@ static void cublasXGemmStridedBatched(
     bool use_gemm_ex) {
   const bool fp16 = std::is_same<half, DataType>::value;
   if (fp16) {
-    unsigned short alpha_h = FP32toFP16(alpha);
-    unsigned short beta_h = FP32toFP16(beta);
     ReportCUBLASErrors(cublasGemmStridedBatchedEx(
-        handle, transa, transb, m, n, k, &alpha_h, A, CUDA_R_16F, lda, strideA,
-        B, CUDA_R_16F, ldb, strideB, &beta_h, C, CUDA_R_16F, ldc, strideC,
-        batchCount, CUDA_R_16F, CUBLAS_GEMM_DEFAULT));
+        handle, transa, transb, m, n, k, &alpha, A, CUDA_R_16F, lda, strideA,
+        B, CUDA_R_16F, ldb, strideB, &beta, C, CUDA_R_16F, ldc, strideC,
+        batchCount, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT));
   } else {
     if (use_gemm_ex) {
       ReportCUBLASErrors(cublasGemmStridedBatchedEx(
@@ -2174,12 +2216,7 @@ AttentionPolicyHead<DataType>::~AttentionPolicyHead() {
 
 template <typename DataType>
 EncoderBlock<DataType>::~EncoderBlock() {
-  ReportCUDAErrors(cudaFree(mha_q_w));
-  ReportCUDAErrors(cudaFree(mha_q_b));
-  ReportCUDAErrors(cudaFree(mha_k_w));
-  ReportCUDAErrors(cudaFree(mha_k_b));
-  ReportCUDAErrors(cudaFree(mha_v_w));
-  ReportCUDAErrors(cudaFree(mha_v_b));
+  // 【魔改 P4】mha_q_w/mha_k_w/mha_v_w 是 mha_qkv_w 内部别名，不需要单独释放
   ReportCUDAErrors(cudaFree(mha_qkv_w));
   ReportCUDAErrors(cudaFree(mha_qkv_b));
   ReportCUDAErrors(cudaFree(mha_dense_w));
@@ -2631,6 +2668,17 @@ template class EmbeddingLayer<float>;
 
 template class ValueHead<half>;
 template class ValueHead<float>;
+
+template void cublasXgemm<half>(cublasHandle_t handle, cublasOperation_t transa,
+                                cublasOperation_t transb, int m, int n, int k,
+                                float alpha, const half* A, int lda,
+                                const half* B, int ldb, float beta, half* C,
+                                int ldc);
+template void cublasXgemm<float>(cublasHandle_t handle, cublasOperation_t transa,
+                                 cublasOperation_t transb, int m, int n, int k,
+                                 float alpha, const float* A, int lda,
+                                 const float* B, int ldb, float beta, float* C,
+                                 int ldc);
 
 // Misc error handling stuff.
 #ifdef USE_CUDNN
