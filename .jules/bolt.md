@@ -1,0 +1,3 @@
+## 2024-07-18 - String Utility Return Types
+**Learning:** When changing input types to `std::string_view` for string utility functions (like `Trim`, `LeftTrim`, `RightTrim`), keep the return type as `std::string` if they return modified strings. Returning `std::string_view` from general utility functions risks dangling references if callers pass temporary strings, and breaks API compatibility since `std::string` constructors from `std::string_view` are explicit.
+**Action:** Always consider the callers and the risk of dangling references when adopting `std::string_view`, especially for function return types that operate on potentially temporary inputs.

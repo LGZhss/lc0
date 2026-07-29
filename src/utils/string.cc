@@ -35,7 +35,7 @@
 namespace lczero {
 
 std::string StrJoin(const std::vector<std::string>& strings,
-                    const std::string& delim) {
+                    std::string_view delim) {
   std::string res;
   for (const auto& str : strings) {
     if (!res.empty()) res += delim;
@@ -44,27 +44,35 @@ std::string StrJoin(const std::vector<std::string>& strings,
   return res;
 }
 
-std::vector<std::string> StrSplitAtWhitespace(const std::string& str) {
+std::vector<std::string> StrSplitAtWhitespace(std::string_view str) {
   std::vector<std::string> result;
-  std::istringstream iss(str);
-  std::string tmp;
-  while (iss >> tmp) result.emplace_back(std::move(tmp));
-  return result;
-}
-
-std::vector<std::string> StrSplit(const std::string& str,
-                                  const std::string& delim) {
-  std::vector<std::string> result;
-  for (std::string::size_type pos = 0, next = 0; pos != std::string::npos;
-       pos = next) {
-    next = str.find(delim, pos);
-    result.push_back(str.substr(pos, next - pos));
-    if (next != std::string::npos) next += delim.size();
+  auto begin = str.begin();
+  const auto end = str.end();
+  while (begin != end) {
+    begin =
+        std::find_if_not(begin, end, [](int ch) { return std::isspace(ch); });
+    if (begin == end) break;
+    auto word_end =
+        std::find_if(begin, end, [](int ch) { return std::isspace(ch); });
+    result.emplace_back(begin, word_end);
+    begin = word_end;
   }
   return result;
 }
 
-std::vector<int> ParseIntList(const std::string& str) {
+std::vector<std::string> StrSplit(std::string_view str,
+                                  std::string_view delim) {
+  std::vector<std::string> result;
+  for (std::string_view::size_type pos = 0, next = 0;
+       pos != std::string_view::npos; pos = next) {
+    next = str.find(delim, pos);
+    result.emplace_back(str.substr(pos, next - pos));
+    if (next != std::string_view::npos) next += delim.size();
+  }
+  return result;
+}
+
+std::vector<int> ParseIntList(std::string_view str) {
   std::vector<int> result;
   for (const auto& x : StrSplit(str, ",")) {
     result.push_back(std::stoi(x));
@@ -72,31 +80,37 @@ std::vector<int> ParseIntList(const std::string& str) {
   return result;
 }
 
-std::string LeftTrim(std::string str) {
+std::string LeftTrim(std::string_view str) {
   const auto it = std::find_if(str.begin(), str.end(),
-                         [](int ch) { return !std::isspace(ch); });
-  str.erase(str.begin(), it);
-  return str;
+                               [](int ch) { return !std::isspace(ch); });
+  str.remove_prefix(std::distance(str.begin(), it));
+  return std::string(str);
 }
 
-std::string RightTrim(std::string str) {
+std::string RightTrim(std::string_view str) {
   auto it = std::find_if(str.rbegin(), str.rend(),
                          [](int ch) { return !std::isspace(ch); });
-  str.erase(it.base(), str.end());
-  return str;
+  str.remove_suffix(std::distance(str.rbegin(), it));
+  return std::string(str);
 }
 
-std::string Trim(std::string str) {
-  return LeftTrim(RightTrim(std::move(str)));
+std::string Trim(std::string_view str) {
+  const auto left_it = std::find_if(str.begin(), str.end(),
+                                    [](int ch) { return !std::isspace(ch); });
+  str.remove_prefix(std::distance(str.begin(), left_it));
+  auto right_it = std::find_if(str.rbegin(), str.rend(),
+                               [](int ch) { return !std::isspace(ch); });
+  str.remove_suffix(std::distance(str.rbegin(), right_it));
+  return std::string(str);
 }
 
-bool StringsEqualIgnoreCase(const std::string& a, const std::string& b) {
+bool StringsEqualIgnoreCase(std::string_view a, std::string_view b) {
   return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](char a, char b) {
     return std::tolower(a) == std::tolower(b);
   });
 }
 
-std::vector<std::string> FlowText(const std::string& src, size_t width) {
+std::vector<std::string> FlowText(std::string_view src, size_t width) {
   std::vector<std::string> result;
   auto paragraphs = StrSplit(src, "\n");
   for (const auto& paragraph : paragraphs) {
