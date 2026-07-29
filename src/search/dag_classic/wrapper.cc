@@ -87,11 +87,11 @@ MoveList StringsToMovelist(const std::vector<std::string>& moves,
   MoveList result;
   if (moves.size()) {
     result.reserve(moves.size());
-    const auto legal_moves = board.GenerateLegalMoves();
+    auto legal_moves = board.GenerateLegalMoves();
+    std::sort(legal_moves.begin(), legal_moves.end());
     for (const auto& move : moves) {
       const Move m = board.ParseMove(move);
-      if (std::find(legal_moves.begin(), legal_moves.end(), m) !=
-          legal_moves.end()) {
+      if (std::binary_search(legal_moves.begin(), legal_moves.end(), m)) {
         result.emplace_back(m);
       }
     }

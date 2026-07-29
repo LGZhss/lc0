@@ -429,7 +429,7 @@ void InitializeMagicBitboards() {
 
 MoveList ChessBoard::GeneratePseudolegalMoves() const {
   MoveList result;
-  result.reserve(60);
+  result.reserve(218);
   for (auto source : our_pieces_) {
     // King
     if (source == our_king_) {
