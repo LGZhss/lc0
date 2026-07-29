@@ -46,9 +46,17 @@ std::string StrJoin(const std::vector<std::string>& strings,
 
 std::vector<std::string> StrSplitAtWhitespace(const std::string& str) {
   std::vector<std::string> result;
-  std::istringstream iss(str);
-  std::string tmp;
-  while (iss >> tmp) result.emplace_back(std::move(tmp));
+  // ⚡ Bolt: Avoid slow std::istringstream overhead by using fast string searches.
+  size_t start = str.find_first_not_of(" \t\n\r\v\f");
+  while (start != std::string::npos) {
+    size_t end = str.find_first_of(" \t\n\r\v\f", start);
+    if (end == std::string::npos) {
+      result.emplace_back(str, start, std::string::npos);
+      break;
+    }
+    result.emplace_back(str, start, end - start);
+    start = str.find_first_not_of(" \t\n\r\v\f", end + 1);
+  }
   return result;
 }
 
@@ -58,7 +66,9 @@ std::vector<std::string> StrSplit(const std::string& str,
   for (std::string::size_type pos = 0, next = 0; pos != std::string::npos;
        pos = next) {
     next = str.find(delim, pos);
-    result.push_back(str.substr(pos, next - pos));
+    // ⚡ Bolt: Use emplace_back to construct the string directly in place,
+    // avoiding the temporary allocation from str.substr().
+    result.emplace_back(str, pos, next - pos);
     if (next != std::string::npos) next += delim.size();
   }
   return result;
