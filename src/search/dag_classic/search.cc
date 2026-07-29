@@ -59,7 +59,6 @@ MoveList MakeRootMoveFilter(const MoveList& searchmoves,
   assert(tb_hits);
   assert(dtz_success);
   // Search moves overrides tablebase.
-  // Search moves overrides tablebase.
   if (!searchmoves.empty()) {
     MoveList sorted_searchmoves = searchmoves;
     std::sort(sorted_searchmoves.begin(), sorted_searchmoves.end());
