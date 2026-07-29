@@ -427,8 +427,8 @@ float Search::GetDrawScore(bool is_odd_depth) const {
 }
 
 namespace {
-inline float GetFpu(const SearchParams& params, const Node* node, bool is_root_node,
-                    float draw_score) {
+inline float GetFpu(const SearchParams& params, const Node* node,
+                    bool is_root_node, float draw_score) {
   const auto value = params.GetFpuValue(is_root_node);
   return params.GetFpuAbsolute(is_root_node)
              ? value
@@ -437,8 +437,8 @@ inline float GetFpu(const SearchParams& params, const Node* node, bool is_root_n
 }
 
 // Faster version for if visited_policy is readily available already.
-inline float GetFpu(const SearchParams& params, const Node* node, bool is_root_node,
-                    float draw_score, float visited_pol) {
+inline float GetFpu(const SearchParams& params, const Node* node,
+                    bool is_root_node, float draw_score, float visited_pol) {
   const auto value = params.GetFpuValue(is_root_node);
   return params.GetFpuAbsolute(is_root_node)
              ? value
@@ -471,8 +471,7 @@ std::vector<std::string> Search::GetVerboseStats(const Node* node) const {
   edges.reserve(node->GetNumEdges());
   for (const auto& edge : node->Edges()) {
     edges.emplace_back(edge.GetN(),
-                       edge.GetQ(fpu, draw_score) + edge.GetU(U_coeff),
-                       edge);
+                       edge.GetQ(fpu, draw_score) + edge.GetU(U_coeff), edge);
   }
   std::sort(edges.begin(), edges.end());
 
@@ -739,6 +738,8 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   //   * If that number is 0, the one with larger prior wins.
   //   * If that number is larger than 0, the one with larger eval wins.
   std::vector<EdgeAndNode> edges;
+  // Pre-allocate vector capacity to prevent reallocations in hot search paths.
+  edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
     if (parent == root_node_ && !root_move_filter_.empty() &&
         std::find(root_move_filter_.begin(), root_move_filter_.end(),
@@ -836,6 +837,8 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
   const float draw_score = GetDrawScore(/* is_odd_depth= */ false);
 
   std::vector<float> cumulative_sums;
+  // Pre-allocate vector capacity to prevent reallocations in hot search paths.
+  cumulative_sums.reserve(root_node_->GetNumEdges());
   float sum = 0.0;
   float max_n = 0.0;
   const float offset = params_.GetTemperatureVisitOffset();
@@ -2088,6 +2091,8 @@ int SearchWorker::PrefetchIntoCache(Node* node, int budget, bool is_odd_depth) {
   // Populate all subnodes and their scores.
   typedef std::pair<float, EdgeAndNode> ScoredEdge;
   std::vector<ScoredEdge> scores;
+  // Pre-allocate vector capacity to prevent reallocations in hot search paths.
+  scores.reserve(node->GetNumEdges());
   const float cpuct =
       ComputeCpuct(params_, node->GetN(), node == search_->root_node_);
   const float puct_mult =
