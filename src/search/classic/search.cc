@@ -57,7 +57,9 @@ MoveList MakeRootMoveFilter(const MoveList& searchmoves,
   assert(tb_hits);
   assert(dtz_success);
   // Search moves overrides tablebase.
-  if (!searchmoves.empty()) return searchmoves;
+  if (!searchmoves.empty()) {
+    return searchmoves;
+  }
   const auto& board = history.Last().GetBoard();
   MoveList root_moves;
   if (!syzygy_tb || !board.castlings().no_legal_castle() ||
@@ -869,7 +871,9 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
                   edge.GetMove()) == root_move_filter_.end()) {
       continue;
     }
-    if (edge.GetQ(fpu, draw_score) < min_eval) continue;
+    if (edge.GetQ(fpu, draw_score) < min_eval) {
+      continue;
+    }
     sum += std::pow(
         std::max(0.0f,
                  (max_n <= 0.0f
@@ -891,8 +895,12 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
                   edge.GetMove()) == root_move_filter_.end()) {
       continue;
     }
-    if (edge.GetQ(fpu, draw_score) < min_eval) continue;
-    if (idx-- == 0) return edge;
+    if (edge.GetQ(fpu, draw_score) < min_eval) {
+      continue;
+    }
+    if (idx-- == 0) {
+      return edge;
+    }
   }
   assert(false);
   return {};
@@ -1561,7 +1569,9 @@ void SearchWorker::EnsureNodeTwoFoldCorrectForDepth(Node* child_node,
       depth_counter++;
       // Even if original tree still exists, we don't want to revert
       // more than until new root.
-      if (depth_counter > depth) break;
+      if (depth_counter > depth) {
+        break;
+      }
       // If wl != 0, we would have to switch signs at each depth.
     }
     // Mark the prior twofold draw as non terminal to extend it again.
