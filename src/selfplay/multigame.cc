@@ -110,7 +110,8 @@ MultiSelfPlayGames::MultiSelfPlayGames(PlayerOptions player1,
               ? std::unique_ptr<Evaluator>(std::make_unique<ValueEvaluator>())
               : std::unique_ptr<Evaluator>(std::make_unique<PolicyEvaluator>());
   trees_.reserve(openings.size());
-  for (auto opening : openings) {
+  results_.reserve(openings.size());
+  for (const auto& opening : openings) {
     trees_.push_back(std::make_shared<classic::NodeTree>());
     trees_.back()->ResetToPosition(opening.start_fen, {});
     results_.push_back(GameResult::UNDECIDED);
