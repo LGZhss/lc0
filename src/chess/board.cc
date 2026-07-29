@@ -1235,15 +1235,21 @@ std::string BoardToFen(const ChessBoard& in_board) {
       Square square(file, rank);
       char piece = GetPieceAt(board, square);
       if (piece) {
-        if (empty) result += static_cast<char>('0' + empty);
+        if (empty > 0) {
+          result += static_cast<char>('0' + empty);
+        }
         empty = 0;
         result += piece;
       } else {
         ++empty;
       }
     }
-    if (empty) result += static_cast<char>('0' + empty);
-    if (rank != kRank1) result += '/';
+    if (empty > 0) {
+      result += static_cast<char>('0' + empty);
+    }
+    if (rank != kRank1) {
+      result += '/';
+    }
   }
   result += black_to_move ? " b" : " w";
   result += " " + board.castlings().as_string();
