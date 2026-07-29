@@ -1,0 +1,3 @@
+## 2024-05-19 - Pre-allocation for frequently instantiated std::vector within hot loops
+**Learning:** In the core search routines `GetBestChildrenNoTemperature` and `GetBestRootChildWithTemperature` (both Classic and DAG implementations), standard containers like `std::vector` were being populated in highly active code loops without `reserve()` calls. Dynamically sizing memory inside node tree traversals led to increased reallocation overhead and CPU cycles wasted on repeated vector growth.
+**Action:** Always verify if size is easily obtainable for hot code paths and apply `.reserve()` proactively on collections constructed in search routines.

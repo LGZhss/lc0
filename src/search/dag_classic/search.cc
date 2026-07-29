@@ -798,6 +798,7 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   //   * If that number is 0, the one with larger prior wins.
   //   * If that number is larger than 0, the one with larger eval wins.
   std::vector<EdgeAndNode> edges;
+  edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
     if (parent == root_node_ && !root_move_filter_.empty() &&
         std::find(root_move_filter_.begin(), root_move_filter_.end(),
@@ -895,6 +896,7 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
   const float draw_score = GetDrawScore(/* is_odd_depth= */ false);
 
   std::vector<float> cumulative_sums;
+  cumulative_sums.reserve(root_node_->GetNumEdges());
   float sum = 0.0;
   float max_n = 0.0;
   const float offset = params_.GetTemperatureVisitOffset();
@@ -1013,6 +1015,7 @@ void Search::PopulateCommonIterationStats(classic::IterationStats* stats) {
     const auto m_evaluator = backend_attributes_.has_mlh
                                  ? MEvaluator(params_, root_node_)
                                  : MEvaluator();
+    stats->edge_n.reserve(root_node_->GetNumEdges());
     for (const auto& edge : root_node_->Edges()) {
       const auto n = edge.GetN();
       const auto q = edge.GetQ(fpu, draw_score);
