@@ -1,0 +1,4 @@
+
+## 2026-07-22 - MoveList abstraction and std::vector allocations
+**Learning:** Replacing a core typedef like `using MoveList = std::vector<Move>` with a fixed-size array struct gives massive speedups (~500x in isolated allocation tests) but is highly invasive and causes many compiler errors if the code relies on std::vector methods like `.erase()`, `.clear()`, or iterator assignments. Attempting to get exactly the right size by traversing a linked list twice just to `reserve()` exactly the right capacity is slower than picking a safe upper-bound constant due to the overhead of pointer chasing.
+**Action:** When trying to implement "small" low-risk performance PRs, stick to safe `.reserve()` calls in hot paths with safe constants (like `reserve(256)` for a chess move history) rather than large core abstraction rewrites, to avoid heavy cascading failures.
