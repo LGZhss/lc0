@@ -160,10 +160,10 @@ class MEvaluator {
 // to acquire work based on stale values if the stale tasks_taken was zero.
 // Packed values avoid the race because compare exchange is checking both when
 // incrementing tasks_taken_.
-template <typename T>
+template<typename T>
 std::tuple<int, int, int> ReadTaskCount(T& task_count) {
   int packed;
-  if constexpr (std::is_same_v<T, std::atomic<int>>) {
+  if constexpr(std::is_same_v<T, std::atomic<int>>) {
     packed = task_count.load(std::memory_order_acquire);
   } else {
     packed = task_count;
@@ -261,10 +261,11 @@ void ApplyDirichletNoise(LowNode* node, float eps, double alpha) {
 
   int noise_idx = 0;
   auto edges = node->GetEdges();
-  std::transform(edges, edges + node->GetNumEdges(), edges, [&](auto edge) {
-    edge.SetP(edge.GetP() * (1 - eps) + eps * noise[noise_idx++] / total);
-    return edge;
-  });
+  std::transform(edges, edges + node->GetNumEdges(), edges,
+      [&](auto edge) {
+        edge.SetP(edge.GetP() * (1 - eps) + eps * noise[noise_idx++] / total);
+        return edge;
+      });
 }
 }  // namespace
 
@@ -308,7 +309,7 @@ inline double WDLRescale(float& v, float& d, float wdl_rescale_ratio,
 }  // namespace
 
 void Search::SendUciInfo(const classic::IterationStats& stats)
-    REQUIRES(nodes_mutex_) REQUIRES(counters_mutex_) {
+                         REQUIRES(nodes_mutex_) REQUIRES(counters_mutex_) {
   const auto max_pv = params_.GetMultiPv();
   const auto edges = GetBestChildrenNoTemperature(root_node_, max_pv, 0);
   const auto score_type = params_.GetScoreType();
@@ -482,8 +483,8 @@ float Search::GetDrawScore(bool is_odd_depth) const {
 }
 
 namespace {
-inline float GetFpu(const SearchParams& params, const Node* node,
-                    bool is_root_node, float draw_score) {
+inline float GetFpu(const SearchParams& params, const Node* node, bool is_root_node,
+                    float draw_score) {
   const auto value = params.GetFpuValue(is_root_node);
   return params.GetFpuAbsolute(is_root_node)
              ? value
@@ -492,8 +493,8 @@ inline float GetFpu(const SearchParams& params, const Node* node,
 }
 
 // Faster version for if visited_policy is readily available already.
-inline float GetFpu(const SearchParams& params, const Node* node,
-                    bool is_root_node, float draw_score, float visited_pol) {
+inline float GetFpu(const SearchParams& params, const Node* node, bool is_root_node,
+                    float draw_score, float visited_pol) {
   const auto value = params.GetFpuValue(is_root_node);
   return params.GetFpuAbsolute(is_root_node)
              ? value
@@ -526,7 +527,8 @@ std::vector<std::string> Search::GetVerboseStats(
   edges.reserve(node->GetNumEdges());
   for (const auto& edge : node->Edges()) {
     edges.emplace_back(edge.GetN(),
-                       edge.GetQ(fpu, draw_score) + edge.GetU(U_coeff), edge);
+                       edge.GetQ(fpu, draw_score) + edge.GetU(U_coeff),
+                       edge);
   }
   std::sort(edges.begin(), edges.end());
 
@@ -680,9 +682,8 @@ void Search::MaybeTriggerStop(const classic::IterationStats& stats,
     if (stopper_->ShouldStop(stats, hints)) {
       FireStopInternal();
     } else if (!gc_started_ &&
-               stats.time_since_movestart >
-                   delay * (stats.time_since_movestart +
-                            hints->GetEstimatedRemainingTimeMs())) {
+        stats.time_since_movestart > delay *
+        (stats.time_since_movestart + hints->GetEstimatedRemainingTimeMs())) {
       NodeGarbageCollector::Instance().Start();
       gc_started_ = true;
     }
@@ -1148,7 +1149,8 @@ Search::~Search() {
 // SearchWorker
 //////////////////////////////////////////////////////////////////////////////
 
-SearchWorker::~SearchWorker() {
+SearchWorker::~SearchWorker()
+{
   {
     // Tasks must be completed before destructor. If a gather tasks is running,
     // it can increment task_count_ which would break the exit state.
@@ -1164,14 +1166,13 @@ SearchWorker::~SearchWorker() {
   LOGFILE << "Search worker destroyed.";
 }
 
-std::tuple<SearchWorker::PickTask*, int, int>
-SearchWorker::PickTaskToProcess() {
+std::tuple<SearchWorker::PickTask*, int, int> SearchWorker::PickTaskToProcess() {
   auto [packed_value, nta, tc] = ReadTaskCount(task_count_);
 
   // Check if tasks are queued and try increment taken count.
-  while (nta < tc && !task_count_.compare_exchange_weak(
-                         packed_value, packed_value + kTasksTakenOne,
-                         std::memory_order_acq_rel)) {
+  while (nta < tc &&
+      !task_count_.compare_exchange_weak(packed_value, packed_value + kTasksTakenOne,
+                                         std::memory_order_acq_rel)) {
     // Queue had tasks but another worker increment taken. We check
     // if new work was added to the queue. Then we try to increment
     // taken again.
@@ -1190,7 +1191,8 @@ void SearchWorker::ProcessTask(PickTask* task, int id,
   switch (task->task_type) {
     case PickTask::kGathering: {
       PickNodesToExtendTask(task->start_path, task->collision_limit,
-                            task->history, receiver, workspace);
+                            task->history, receiver,
+                            workspace);
       break;
     }
     case PickTask::kProcessing: {
@@ -1427,6 +1429,7 @@ void SearchWorker::GatherMinibatch() {
     }
 
     {
+
       bool needs_wait = false;
       int ppt_start = new_start;
       if (task_workers_ > 0 &&
@@ -1986,7 +1989,9 @@ void SearchWorker::PickNodesToExtendTask(
       auto rbegin = rend - std::distance(visits_to_perform.begin(), end);
       size_t size = current_path.size();
       std::copy_if(rbegin, rend, std::back_inserter(current_path),
-                   [](CurrentPath& v) { return !!v; });
+                   [](CurrentPath& v) {
+                     return !!v;
+                   });
       if (current_path.size() != size) {
         current_path[size].last_child_ = true;
       }
@@ -2137,8 +2142,9 @@ void SearchWorker::FetchSingleNodeResult(NodeToProcess* node_to_process) {
          search_->contempt_mode_ != ContemptMode::NONE)) {
       // Check whether root moves are from the set perspective.
       bool root_stm = search_->contempt_mode_ == ContemptMode::WHITE;
-      auto sign =
-          (root_stm ^ node_to_process->history.IsBlackToMove()) ? 1.0f : -1.0f;
+      auto sign = (root_stm ^ node_to_process->history.IsBlackToMove())
+                      ? 1.0f
+                      : -1.0f;
       WDLRescale(node_to_process->eval->q, node_to_process->eval->d,
                  params_.GetWDLRescaleRatio(),
                  search_->contempt_mode_ == ContemptMode::NONE
