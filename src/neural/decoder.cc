@@ -257,21 +257,21 @@ Move DecodeMoveFromInput(const InputPlanes& planes, const InputPlanes& prior) {
   auto rookdiff = MaskDiffWithMirror(planes[9], prior[3]);
   auto queendiff = MaskDiffWithMirror(planes[10], prior[4]);
   // Handle Promotion.
-  if (pawndiff.count() == 1) {
+  if (pawndiff.has_single_bit()) {
     auto from = SingleSquare(pawndiff);
-    if (knightdiff.count() == 1) {
+    if (knightdiff.has_single_bit()) {
       auto to = SingleSquare(knightdiff);
       return Move::WhitePromotion(from, to, kKnight);
     }
-    if (bishopdiff.count() == 1) {
+    if (bishopdiff.has_single_bit()) {
       auto to = SingleSquare(bishopdiff);
       return Move::WhitePromotion(from, to, kBishop);
     }
-    if (rookdiff.count() == 1) {
+    if (rookdiff.has_single_bit()) {
       auto to = SingleSquare(rookdiff);
       return Move::WhitePromotion(from, to, kRook);
     }
-    if (queendiff.count() == 1) {
+    if (queendiff.has_single_bit()) {
       auto to = SingleSquare(queendiff);
       return Move::WhitePromotion(from, to, kQueen);
     }

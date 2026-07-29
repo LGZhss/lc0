@@ -1,0 +1,3 @@
+## 2023-10-27 - [C++20 Bit operations]
+**Learning:** The project is on C++20 standard. Bit operations like counting set bits or checking for single bit set can be replaced by `<bit>` library's `std::popcount` and `std::has_single_bit`. `std::popcount` is universally available in C++20 and fast. Custom implementations like `count_few` or `#ifdef` macros for popcount are obsolete and redundant.
+**Action:** Always prefer standard C++20 `<bit>` operations like `std::popcount`, `std::countr_zero`, and `std::has_single_bit` over compiler-specific builtins (like `__builtin_popcountll`) or custom macros. They are standard, portable, and constexpr.
