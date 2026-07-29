@@ -903,7 +903,7 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
     }
   }
   assert(false);
-  return {};
+  return EdgeAndNode();
 }
 
 void Search::StartThreads(size_t how_many) {
