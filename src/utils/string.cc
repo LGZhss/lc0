@@ -36,10 +36,22 @@ namespace lczero {
 
 std::string StrJoin(const std::vector<std::string>& strings,
                     const std::string& delim) {
-  std::string res;
+  if (strings.empty()) return "";
+
+  // Pre-calculate total length to avoid multiple allocations during concatenation
+  size_t total_len = 0;
   for (const auto& str : strings) {
-    if (!res.empty()) res += delim;
-    res += str;
+    total_len += str.size();
+  }
+  total_len += delim.size() * (strings.size() - 1);
+
+  std::string res;
+  res.reserve(total_len);
+
+  res += strings[0];
+  for (size_t i = 1; i < strings.size(); ++i) {
+    res += delim;
+    res += strings[i];
   }
   return res;
 }

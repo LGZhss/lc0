@@ -50,7 +50,7 @@ void Logging::WriteLineRaw(const std::string& line) {
     if (buffer_.size() > kBufferSizeLines) buffer_.pop_front();
   } else {
     auto& file = (filename_ == kStderrFilename) ? std::cerr : file_;
-    file << line << std::endl;
+    file << line << '\n';
   }
 }
 
@@ -64,8 +64,8 @@ void Logging::SetFilename(const std::string& filename) {
   if (filename.empty()) return;
   if (filename != kStderrFilename) file_.open(filename, std::ios_base::app);
   auto& file = (filename == kStderrFilename) ? std::cerr : file_;
-  file << "\n\n============= Log started. =============" << std::endl;
-  for (const auto& line : buffer_) file << line << std::endl;
+  file << "\n\n============= Log started. =============" << '\n';
+  for (const auto& line : buffer_) file << line << '\n';
   buffer_.clear();
 }
 
@@ -81,7 +81,7 @@ StderrLogMessage::StderrLogMessage(const char* file, int line)
     : log_(file, line) {}
 
 StderrLogMessage::~StderrLogMessage() {
-  std::cerr << str() << std::endl;
+  std::cerr << str() << '\n';
   log_ << str();
 }
 
@@ -89,7 +89,7 @@ StdoutLogMessage::StdoutLogMessage(const char* file, int line)
     : log_(file, line) {}
 
 StdoutLogMessage::~StdoutLogMessage() {
-  std::cout << str() << std::endl;
+  std::cout << str() << '\n';
   log_ << str();
 }
 
