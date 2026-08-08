@@ -148,11 +148,28 @@ uint64_t PositionHistory::HashLast(int positions) const {
   return HashCat(hash, Last().GetRule50Ply());
 }
 
+// ⚡ Bolt: Helper to directly append integers to string to avoid std::to_string
+// allocations
+static void AppendInt(std::string& str, int val) {
+  if (val == 0) {
+    str.push_back('0');
+    return;
+  }
+  char buf[16];
+  char* p = buf + sizeof(buf);
+  while (val > 0) {
+    *--p = static_cast<char>('0' + (val % 10));
+    val /= 10;
+  }
+  str.append(p, buf + sizeof(buf) - p);
+}
+
 std::string PositionToFen(const Position& pos) {
   std::string result = BoardToFen(pos.GetBoard());
-  result += " " + std::to_string(pos.GetRule50Ply());
-  result += " " + std::to_string(
-                      (pos.GetGamePly() + (pos.IsBlackToMove() ? 1 : 2)) / 2);
+  result.push_back(' ');
+  AppendInt(result, pos.GetRule50Ply());
+  result.push_back(' ');
+  AppendInt(result, (pos.GetGamePly() + (pos.IsBlackToMove() ? 1 : 2)) / 2);
   return result;
 }
 }  // namespace lczero

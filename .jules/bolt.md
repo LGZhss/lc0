@@ -8,3 +8,7 @@
 **Learning:** In high-frequency hot paths like the root child selection during search phase (`GetBestRootChildWithTemperature`), the vector allocations such as `cumulative_sums` are dynamically expanding `std::vector`. Since we know the upper bound of edges (`root_node_->GetNumEdges()`), we can pre-allocate it to avoid memory allocations and copying over elements.
 **Action:** Always pre-allocate `std::vector` variables with `reserve` in inner loops / heavy methods if the capacity is known upfront to prevent dynamic resizing, especially in tree traversal and search logic.
 >>>>>>> origin/pr/2
+
+## 2024-07-04 - Avoid two-pass pointer chasing
+**Learning:** In C++, a two-pass approach to pre-allocate `std::vector` when traversing linked lists incurs cache misses from pointer chasing that are generally more expensive than the amortized O(1) cost of `std::vector` reallocations.
+**Action:** Avoid double traversing linked lists to pre-allocate vectors. Also, prefer direct char buffer appending for integers over `std::to_string` to avoid unnecessary heap allocations.
