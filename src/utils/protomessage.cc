@@ -1,5 +1,6 @@
 #include "utils/protomessage.h"
 
+#include <charconv>
 #include <cstdint>
 
 #include "utils/exception.h"
@@ -151,6 +152,16 @@ std::string EscapeJsonString(const std::string& str) {
   return out;
 }
 
+// ⚡ Bolt: Helper to format integers using std::to_chars to avoid std::to_string allocation overhead.
+template <typename T>
+void AppendIntJsonValue(T val, std::string* out) {
+  char buf[32];
+  auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), val);
+  if (ec == std::errc()) {
+    out->append(buf, ptr - buf);
+  }
+}
+
 }  // namespace
 
 void ProtoMessage::AppendJsonValue(const std::string& val, std::string* out) {
@@ -165,16 +176,16 @@ void ProtoMessage::AppendJsonValue(double val, std::string* out) {
   out->append(std::to_string(val));
 }
 void ProtoMessage::AppendJsonValue(uint64_t val, std::string* out) {
-  out->append(std::to_string(val));
+  AppendIntJsonValue(val, out);
 }
 void ProtoMessage::AppendJsonValue(int64_t val, std::string* out) {
-  out->append(std::to_string(val));
+  AppendIntJsonValue(val, out);
 }
 void ProtoMessage::AppendJsonValue(uint32_t val, std::string* out) {
-  out->append(std::to_string(val));
+  AppendIntJsonValue(val, out);
 }
 void ProtoMessage::AppendJsonValue(int32_t val, std::string* out) {
-  out->append(std::to_string(val));
+  AppendIntJsonValue(val, out);
 }
 void ProtoMessage::AppendJsonValue(const ProtoMessage& val, std::string* out) {
   out->append(val.OutputAsJson());
