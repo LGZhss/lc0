@@ -28,6 +28,7 @@
 #include "uciloop.h"
 
 #include <algorithm>
+#include <charconv>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
@@ -79,8 +80,7 @@ const std::unordered_map<std::string, std::unordered_set<std::string>>
         {{"quit"}, {}},
         {{"xyzzy"}, {}},
         {{"fen"}, {}},
-        {{"wait"}, {}}
-};
+        {{"wait"}, {}}};
 
 std::pair<std::string, std::unordered_map<std::string, std::string>>
 ParseCommand(const std::string& line) {
@@ -282,12 +282,27 @@ void StringUciResponder::SendId() {
   SendRawResponse("id author The LCZero Authors.");
 }
 
+namespace {
+template <typename T>
+void append_int(std::string& s, T v) {
+  char buf[32];
+  auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), v);
+  if (ec == std::errc()) s.append(buf, ptr - buf);
+}
+}  // namespace
+
 void StringUciResponder::OutputBestMove(BestMoveInfo* info) {
   const bool c960 = IsChess960();
   std::string res = "bestmove " + info->bestmove.ToString(c960);
   if (!info->ponder.is_null()) res += " ponder " + info->ponder.ToString(c960);
-  if (info->player != -1) res += " player " + std::to_string(info->player);
-  if (info->game_id != -1) res += " gameid " + std::to_string(info->game_id);
+  if (info->player != -1) {
+    res += " player ";
+    append_int(res, info->player);
+  }
+  if (info->game_id != -1) {
+    res += " gameid ";
+    append_int(res, info->game_id);
+  }
   if (info->is_black)
     res += " side " + std::string(*info->is_black ? "black" : "white");
   SendRawResponse(res);
@@ -298,31 +313,72 @@ void StringUciResponder::OutputThinkingInfo(std::vector<ThinkingInfo>* infos) {
   const bool c960 = IsChess960();
   for (const auto& info : *infos) {
     std::string res = "info";
-    if (info.player != -1) res += " player " + std::to_string(info.player);
-    if (info.game_id != -1) res += " gameid " + std::to_string(info.game_id);
+    if (info.player != -1) {
+      res += " player ";
+      append_int(res, info.player);
+    }
+    if (info.game_id != -1) {
+      res += " gameid ";
+      append_int(res, info.game_id);
+    }
     if (info.is_black)
       res += " side " + std::string(*info.is_black ? "black" : "white");
-    if (info.depth >= 0)
-      res += " depth " + std::to_string(std::max(info.depth, 1));
-    if (info.seldepth >= 0) res += " seldepth " + std::to_string(info.seldepth);
-    if (info.time >= 0) res += " time " + std::to_string(info.time);
-    if (info.nodes >= 0) res += " nodes " + std::to_string(info.nodes);
-    if (info.mate) res += " score mate " + std::to_string(*info.mate);
-    if (info.score) res += " score cp " + std::to_string(*info.score);
+    if (info.depth >= 0) {
+      res += " depth ";
+      append_int(res, std::max(info.depth, 1));
+    }
+    if (info.seldepth >= 0) {
+      res += " seldepth ";
+      append_int(res, info.seldepth);
+    }
+    if (info.time >= 0) {
+      res += " time ";
+      append_int(res, info.time);
+    }
+    if (info.nodes >= 0) {
+      res += " nodes ";
+      append_int(res, info.nodes);
+    }
+    if (info.mate) {
+      res += " score mate ";
+      append_int(res, *info.mate);
+    }
+    if (info.score) {
+      res += " score cp ";
+      append_int(res, *info.score);
+    }
     if (info.wdl && options_ && options_->Get<bool>(kShowWDL)) {
-      res += " wdl " + std::to_string(info.wdl->w) + " " +
-             std::to_string(info.wdl->d) + " " + std::to_string(info.wdl->l);
+      res += " wdl ";
+      append_int(res, info.wdl->w);
+      res += " ";
+      append_int(res, info.wdl->d);
+      res += " ";
+      append_int(res, info.wdl->l);
     }
     if (info.moves_left && options_ && options_->Get<bool>(kShowMovesleft)) {
-      res += " movesleft " + std::to_string(*info.moves_left);
+      res += " movesleft ";
+      append_int(res, *info.moves_left);
     }
-    if (info.hashfull >= 0) res += " hashfull " + std::to_string(info.hashfull);
-    if (info.nps >= 0) res += " nps " + std::to_string(info.nps);
+    if (info.hashfull >= 0) {
+      res += " hashfull ";
+      append_int(res, info.hashfull);
+    }
+    if (info.nps >= 0) {
+      res += " nps ";
+      append_int(res, info.nps);
+    }
     if (info.eps >= 0 && options_ && options_->Get<bool>(kShowEPS)) {
-      res += " eps " + std::to_string(info.eps);
+      res += " eps ";
+      append_int(res, info.eps);
     }
-    if (info.tb_hits >= 0) res += " tbhits " + std::to_string(info.tb_hits);
-    if (info.multipv >= 0) res += " multipv " + std::to_string(info.multipv);
+    if (info.tb_hits >= 0) {
+      res += " tbhits ";
+      append_int(res, info.tb_hits);
+    }
+    if (info.multipv >= 0) {
+      res += " multipv ";
+      append_int(res, info.multipv);
+    }
 
     if (!info.pv.empty()) {
       res += " pv";

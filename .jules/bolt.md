@@ -8,3 +8,7 @@
 **Learning:** In high-frequency hot paths like the root child selection during search phase (`GetBestRootChildWithTemperature`), the vector allocations such as `cumulative_sums` are dynamically expanding `std::vector`. Since we know the upper bound of edges (`root_node_->GetNumEdges()`), we can pre-allocate it to avoid memory allocations and copying over elements.
 **Action:** Always pre-allocate `std::vector` variables with `reserve` in inner loops / heavy methods if the capacity is known upfront to prevent dynamic resizing, especially in tree traversal and search logic.
 >>>>>>> origin/pr/2
+
+## 2026-08-11 - Optimize integer string conversions in UCI reporting
+**Learning:** In hot I/O paths like UCI reporting, `std::to_string` creates temporary std::string objects, causing dynamic memory allocations. `std::to_chars` from `<charconv>` operates directly on stack buffers, removing allocation overhead.
+**Action:** Use `std::to_chars` with a local stack buffer instead of `std::to_string` to format integers for fast output building.
