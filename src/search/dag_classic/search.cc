@@ -250,6 +250,8 @@ namespace {
 void ApplyDirichletNoise(LowNode* node, float eps, double alpha) {
   float total = 0;
   std::vector<float> noise;
+  // ⚡ Bolt: Reserve capacity to avoid dynamic memory reallocations
+  noise.reserve(node->GetNumEdges());
 
   for (int i = 0; i < node->GetNumEdges(); ++i) {
     float eta = Random::Get().GetGamma(alpha, 1.0);
@@ -798,6 +800,8 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   //   * If that number is 0, the one with larger prior wins.
   //   * If that number is larger than 0, the one with larger eval wins.
   std::vector<EdgeAndNode> edges;
+  // Pre-allocate vector capacity to prevent reallocations in hot search paths.
+  edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
     if (parent == root_node_ && !root_move_filter_.empty() &&
         std::find(root_move_filter_.begin(), root_move_filter_.end(),

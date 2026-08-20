@@ -202,6 +202,8 @@ namespace {
 void ApplyDirichletNoise(Node* node, float eps, double alpha) {
   float total = 0;
   std::vector<float> noise;
+  // ⚡ Bolt: Reserve capacity to avoid dynamic memory reallocations
+  noise.reserve(node->GetNumEdges());
 
   for (int i = 0; i < node->GetNumEdges(); ++i) {
     float eta = Random::Get().GetGamma(alpha, 1.0);
