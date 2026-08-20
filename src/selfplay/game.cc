@@ -289,11 +289,10 @@ void SelfPlayGame::Play(int white_threads, int black_threads, bool training,
       std::optional<EvalResult> nneval =
           options_[idx].backend->GetCachedEvaluation(EvalPosition{
               tree_[idx]->GetPositionHistory().GetPositions(), legal_moves});
-      training_data_.Add(tree_[idx]->GetCurrentHead(),
-                         tree_[idx]->GetPositionHistory(), best_eval,
-                         played_eval, best_is_proof, best_move, move,
-                         legal_moves, nneval,
-                         search_->GetParams().GetPolicySoftmaxTemp());
+      training_data_.Add(
+          tree_[idx]->GetCurrentHead(), tree_[idx]->GetPositionHistory(),
+          best_eval, played_eval, best_is_proof, best_move, move, legal_moves,
+          nneval, search_->GetParams().GetPolicySoftmaxTemp());
     }
     // Must reset the search before mutating the tree.
     search_.reset();
@@ -308,11 +307,23 @@ void SelfPlayGame::Play(int white_threads, int black_threads, bool training,
 
 std::vector<Move> SelfPlayGame::GetMoves() const {
   std::vector<Move> moves;
+  // ⚡ Bolt: Two-pass approach to pre-allocate vector and avoid dynamic
+  // reallocations in tree path collection.
+  size_t depth = 0;
+  for (classic::Node* node = tree_[0]->GetCurrentHead();
+       node != tree_[0]->GetGameBeginNode(); node = node->GetParent()) {
+    ++depth;
+  }
+  moves.reserve(depth);
+
   for (classic::Node* node = tree_[0]->GetCurrentHead();
        node != tree_[0]->GetGameBeginNode(); node = node->GetParent()) {
     moves.push_back(node->GetParent()->GetEdgeToNode(node)->GetMove());
   }
+
   std::vector<Move> result;
+  result.reserve(moves.size());
+
   Position pos = tree_[0]->GetPositionHistory().Starting();
   while (!moves.empty()) {
     Move move = moves.back();

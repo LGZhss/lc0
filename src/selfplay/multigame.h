@@ -69,6 +69,15 @@ class MultiSelfPlayGames {
 
   std::vector<Move> GetMoves(int index) const {
     std::vector<Move> moves;
+    // ⚡ Bolt: Two-pass approach to pre-allocate vector and avoid dynamic
+    // reallocations in tree path collection.
+    size_t depth = 0;
+    for (classic::Node* node = trees_[index]->GetCurrentHead();
+         node != trees_[index]->GetGameBeginNode(); node = node->GetParent()) {
+      ++depth;
+    }
+    moves.reserve(depth);
+
     bool flip = !trees_[index]->IsBlackToMove();
     for (classic::Node* node = trees_[index]->GetCurrentHead();
          node != trees_[index]->GetGameBeginNode(); node = node->GetParent()) {
