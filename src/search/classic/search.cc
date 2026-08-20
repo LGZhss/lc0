@@ -867,7 +867,7 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
                   edge.GetMove()) == root_move_filter_.end()) {
       continue;
     }
-    if (edge.GetQ(fpu, draw_score) < min_eval) continue;
+    if (edge.GetQ(fpu, draw_score) < min_eval) { continue; }
     sum += std::pow(
         std::max(0.0f,
                  (max_n <= 0.0f
@@ -889,8 +889,8 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
                   edge.GetMove()) == root_move_filter_.end()) {
       continue;
     }
-    if (edge.GetQ(fpu, draw_score) < min_eval) continue;
-    if (idx-- == 0) return edge;
+    if (edge.GetQ(fpu, draw_score) < min_eval) { continue; }
+    if (idx-- == 0) { return edge; }
   }
   assert(false);
   return {};

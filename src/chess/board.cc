@@ -968,10 +968,7 @@ bool ChessBoard::IsLegalMove(Move move,
 MoveList ChessBoard::GenerateLegalMoves() const {
   const KingAttackInfo king_attack_info = GenerateKingAttackInfo();
   MoveList result = GeneratePseudolegalMoves();
-  result.erase(
-      std::remove_if(result.begin(), result.end(),
-                     [&](Move m) { return !IsLegalMove(m, king_attack_info); }),
-      result.end());
+  std::erase_if(result, [this, &king_attack_info](Move m) { return !IsLegalMove(m, king_attack_info); });
   return result;
 }
 
@@ -1245,15 +1242,15 @@ std::string BoardToFen(const ChessBoard& in_board) {
       Square square(file, rank);
       char piece = GetPieceAt(board, square);
       if (piece) {
-        if (empty) result += static_cast<char>('0' + empty);
+        if (empty) { result += static_cast<char>('0' + empty); }
         empty = 0;
         result += piece;
       } else {
         ++empty;
       }
     }
-    if (empty) result += static_cast<char>('0' + empty);
-    if (rank != kRank1) result += '/';
+    if (empty) { result += static_cast<char>('0' + empty); }
+    if (rank != kRank1) { result += '/'; }
   }
   result += black_to_move ? " b" : " w";
   result += " " + board.castlings().as_string();
