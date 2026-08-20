@@ -27,6 +27,8 @@
 
 #include "chess/board.h"
 
+#include <absl/cleanup/cleanup.h>
+
 #include <algorithm>
 #include <cctype>
 #include <charconv>
@@ -34,7 +36,6 @@
 #include <cstring>
 #include <sstream>
 #include <utility>
-#include <absl/cleanup/cleanup.h>
 
 #include "utils/exception.h"
 
@@ -128,14 +129,28 @@ static const BitBoard kBishopAttacks[] = {
     0x0040201008040201ULL};
 // Which squares can king attack.
 static const BitBoard kKingAttacks[] = {
-    0x0000000000000302ULL, 0x0000000000000705ULL, 0x0000000000000e0aULL, 0x0000000000001c14ULL, 0x0000000000003828ULL, 0x0000000000007050ULL, 0x000000000000e0a0ULL, 0x000000000000c040ULL,
-    0x0000000000030203ULL, 0x0000000000070507ULL, 0x00000000000e0a0eULL, 0x00000000001c141cULL, 0x0000000000382838ULL, 0x0000000000705070ULL, 0x0000000000e0a0e0ULL, 0x0000000000c040c0ULL,
-    0x0000000003020300ULL, 0x0000000007050700ULL, 0x000000000e0a0e00ULL, 0x000000001c141c00ULL, 0x0000000038283800ULL, 0x0000000070507000ULL, 0x00000000e0a0e000ULL, 0x00000000c040c000ULL,
-    0x0000000302030000ULL, 0x0000000705070000ULL, 0x0000000e0a0e0000ULL, 0x0000001c141c0000ULL, 0x0000003828380000ULL, 0x0000007050700000ULL, 0x000000e0a0e00000ULL, 0x000000c040c00000ULL,
-    0x0000030203000000ULL, 0x0000070507000000ULL, 0x00000e0a0e000000ULL, 0x00001c141c000000ULL, 0x0000382838000000ULL, 0x0000705070000000ULL, 0x0000e0a0e0000000ULL, 0x0000c040c0000000ULL,
-    0x0003020300000000ULL, 0x0007050700000000ULL, 0x000e0a0e00000000ULL, 0x001c141c00000000ULL, 0x0038283800000000ULL, 0x0070507000000000ULL, 0x00e0a0e000000000ULL, 0x00c040c000000000ULL,
-    0x0302030000000000ULL, 0x0705070000000000ULL, 0x0e0a0e0000000000ULL, 0x1c141c0000000000ULL, 0x3828380000000000ULL, 0x7050700000000000ULL, 0xe0a0e00000000000ULL, 0xc040c00000000000ULL,
-    0x0203000000000000ULL, 0x0507000000000000ULL, 0x0a0e000000000000ULL, 0x141c000000000000ULL, 0x2838000000000000ULL, 0x5070000000000000ULL, 0xa0e0000000000000ULL, 0x40c0000000000000ULL,
+    0x0000000000000302ULL, 0x0000000000000705ULL, 0x0000000000000e0aULL,
+    0x0000000000001c14ULL, 0x0000000000003828ULL, 0x0000000000007050ULL,
+    0x000000000000e0a0ULL, 0x000000000000c040ULL, 0x0000000000030203ULL,
+    0x0000000000070507ULL, 0x00000000000e0a0eULL, 0x00000000001c141cULL,
+    0x0000000000382838ULL, 0x0000000000705070ULL, 0x0000000000e0a0e0ULL,
+    0x0000000000c040c0ULL, 0x0000000003020300ULL, 0x0000000007050700ULL,
+    0x000000000e0a0e00ULL, 0x000000001c141c00ULL, 0x0000000038283800ULL,
+    0x0000000070507000ULL, 0x00000000e0a0e000ULL, 0x00000000c040c000ULL,
+    0x0000000302030000ULL, 0x0000000705070000ULL, 0x0000000e0a0e0000ULL,
+    0x0000001c141c0000ULL, 0x0000003828380000ULL, 0x0000007050700000ULL,
+    0x000000e0a0e00000ULL, 0x000000c040c00000ULL, 0x0000030203000000ULL,
+    0x0000070507000000ULL, 0x00000e0a0e000000ULL, 0x00001c141c000000ULL,
+    0x0000382838000000ULL, 0x0000705070000000ULL, 0x0000e0a0e0000000ULL,
+    0x0000c040c0000000ULL, 0x0003020300000000ULL, 0x0007050700000000ULL,
+    0x000e0a0e00000000ULL, 0x001c141c00000000ULL, 0x0038283800000000ULL,
+    0x0070507000000000ULL, 0x00e0a0e000000000ULL, 0x00c040c000000000ULL,
+    0x0302030000000000ULL, 0x0705070000000000ULL, 0x0e0a0e0000000000ULL,
+    0x1c141c0000000000ULL, 0x3828380000000000ULL, 0x7050700000000000ULL,
+    0xe0a0e00000000000ULL, 0xc040c00000000000ULL, 0x0203000000000000ULL,
+    0x0507000000000000ULL, 0x0a0e000000000000ULL, 0x141c000000000000ULL,
+    0x2838000000000000ULL, 0x5070000000000000ULL, 0xa0e0000000000000ULL,
+    0x40c0000000000000ULL,
 };
 
 // Which squares can knight attack.
@@ -589,16 +604,11 @@ MoveList ChessBoard::GeneratePseudolegalMoves() const {
 bool ChessBoard::IsValid() const {
   const auto all = ours() | theirs();
   auto check = all | pawns() | bishops() | rooks() | queens() | kings();
-  if (check != all ||
-      (pawns() & bishops()).as_int() ||
-      (pawns() & rooks()).as_int() ||
-      (pawns() & queens()).as_int() ||
-      (pawns() & kings()).as_int() ||
-      (bishops() & rooks()).as_int() ||
-      (bishops() & queens()).as_int() ||
-      (bishops() & kings()).as_int() ||
-      (rooks() & queens()).as_int() ||
-      (rooks() & kings()).as_int() ||
+  if (check != all || (pawns() & bishops()).as_int() ||
+      (pawns() & rooks()).as_int() || (pawns() & queens()).as_int() ||
+      (pawns() & kings()).as_int() || (bishops() & rooks()).as_int() ||
+      (bishops() & queens()).as_int() || (bishops() & kings()).as_int() ||
+      (rooks() & queens()).as_int() || (rooks() & kings()).as_int() ||
       (queens() & kings()).as_int()) {
     return false;
   }
@@ -739,8 +749,9 @@ bool ChessBoard::ApplyMove(Move move) {
 
 bool ChessBoard::IsUnderAttack(Square square) const {
   // Check king.
-  // ⚡ Bolt Optimization: Replaced slow rank and file arithmetic with a fast precomputed bitboard lookup.
-  // This reduces branching and improves execution time for the highly trafficked IsUnderAttack function.
+  // ⚡ Bolt Optimization: Replaced slow rank and file arithmetic with a fast
+  // precomputed bitboard lookup. This reduces branching and improves execution
+  // time for the highly trafficked IsUnderAttack function.
   if (kKingAttacks[square.as_idx()].get(their_king_)) return true;
 
   // Check rooks (and queens).
@@ -968,10 +979,8 @@ bool ChessBoard::IsLegalMove(Move move,
 MoveList ChessBoard::GenerateLegalMoves() const {
   const KingAttackInfo king_attack_info = GenerateKingAttackInfo();
   MoveList result = GeneratePseudolegalMoves();
-  result.erase(
-      std::remove_if(result.begin(), result.end(),
-                     [&](Move m) { return !IsLegalMove(m, king_attack_info); }),
-      result.end());
+  std::erase_if(result,
+                [&](Move m) { return !IsLegalMove(m, king_attack_info); });
   return result;
 }
 
