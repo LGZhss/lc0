@@ -48,7 +48,7 @@ namespace classic {
 
 namespace {
 // Maximum delay between outputting "uci info" when nothing interesting happens.
-const int kUciInfoMinimumFrequencyMs = 5000;
+constexpr int kUciInfoMinimumFrequencyMs = 5000;
 
 MoveList MakeRootMoveFilter(const MoveList& searchmoves,
                             SyzygyTablebase* syzygy_tb,
@@ -746,6 +746,7 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   // Pre-allocate vector capacity to prevent reallocations in hot search paths.
   edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
+  edges.reserve(parent->GetNumEdges());
     if (parent == root_node_ && !root_move_filter_.empty() &&
         !std::binary_search(root_move_filter_.begin(), root_move_filter_.end(),
                             edge.GetMove())) {

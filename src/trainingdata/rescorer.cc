@@ -265,7 +265,7 @@ void gaviota_tb_probe_hard(const Position& pos, unsigned int& info,
   ChessBoard board = pos.GetBoard();
   if (pos.IsBlackToMove()) board.Mirror();
   auto epsq = tb_NOSQUARE;
-  for (auto sq : board.en_passant()) {
+  for (const auto& sq : board.en_passant()) {
     // Our internal representation stores en_passant 2 rows away
     // from the actual sq.
     if (sq.rank().idx == 0) {
@@ -275,32 +275,32 @@ void gaviota_tb_probe_hard(const Position& pos, unsigned int& info,
     }
   }
   int idx = 0;
-  for (auto sq : (board.ours() & board.kings())) {
+  for (const auto& sq : (board.ours() & board.kings())) {
     wsq[idx] = (TB_squares)sq.as_idx();
     wpc[idx] = tb_KING;
     idx++;
   }
-  for (auto sq : (board.ours() & board.knights())) {
+  for (const auto& sq : (board.ours() & board.knights())) {
     wsq[idx] = (TB_squares)sq.as_idx();
     wpc[idx] = tb_KNIGHT;
     idx++;
   }
-  for (auto sq : (board.ours() & board.queens())) {
+  for (const auto& sq : (board.ours() & board.queens())) {
     wsq[idx] = (TB_squares)sq.as_idx();
     wpc[idx] = tb_QUEEN;
     idx++;
   }
-  for (auto sq : (board.ours() & board.rooks())) {
+  for (const auto& sq : (board.ours() & board.rooks())) {
     wsq[idx] = (TB_squares)sq.as_idx();
     wpc[idx] = tb_ROOK;
     idx++;
   }
-  for (auto sq : (board.ours() & board.bishops())) {
+  for (const auto& sq : (board.ours() & board.bishops())) {
     wsq[idx] = (TB_squares)sq.as_idx();
     wpc[idx] = tb_BISHOP;
     idx++;
   }
-  for (auto sq : (board.ours() & board.pawns())) {
+  for (const auto& sq : (board.ours() & board.pawns())) {
     wsq[idx] = (TB_squares)sq.as_idx();
     wpc[idx] = tb_PAWN;
     idx++;
@@ -309,32 +309,32 @@ void gaviota_tb_probe_hard(const Position& pos, unsigned int& info,
   wpc[idx] = tb_NOPIECE;
 
   idx = 0;
-  for (auto sq : (board.theirs() & board.kings())) {
+  for (const auto& sq : (board.theirs() & board.kings())) {
     bsq[idx] = (TB_squares)sq.as_idx();
     bpc[idx] = tb_KING;
     idx++;
   }
-  for (auto sq : (board.theirs() & board.knights())) {
+  for (const auto& sq : (board.theirs() & board.knights())) {
     bsq[idx] = (TB_squares)sq.as_idx();
     bpc[idx] = tb_KNIGHT;
     idx++;
   }
-  for (auto sq : (board.theirs() & board.queens())) {
+  for (const auto& sq : (board.theirs() & board.queens())) {
     bsq[idx] = (TB_squares)sq.as_idx();
     bpc[idx] = tb_QUEEN;
     idx++;
   }
-  for (auto sq : (board.theirs() & board.rooks())) {
+  for (const auto& sq : (board.theirs() & board.rooks())) {
     bsq[idx] = (TB_squares)sq.as_idx();
     bpc[idx] = tb_ROOK;
     idx++;
   }
-  for (auto sq : (board.theirs() & board.bishops())) {
+  for (const auto& sq : (board.theirs() & board.bishops())) {
     bsq[idx] = (TB_squares)sq.as_idx();
     bpc[idx] = tb_BISHOP;
     idx++;
   }
-  for (auto sq : (board.theirs() & board.pawns())) {
+  for (const auto& sq : (board.theirs() & board.pawns())) {
     bsq[idx] = (TB_squares)sq.as_idx();
     bpc[idx] = tb_PAWN;
     idx++;
@@ -491,7 +491,8 @@ std::vector<V6TrainingData> ReadFile(const std::string& file) {
 }
 
 template <typename FrameType>
-FileData<FrameType> ProcessAndValidateFileData(std::vector<FrameType> fileContents) {
+FileData<FrameType> ProcessAndValidateFileData(
+    std::vector<FrameType> fileContents) {
   FileData<FrameType> data;
   data.fileContents = std::move(fileContents);
 
@@ -551,7 +552,8 @@ void ApplyPolicySubstitutions(FileData<FrameType>& data) {
 }
 
 template <typename FrameType>
-void ApplySyzygyRescoring(FileData<FrameType>& data, SyzygyTablebase* tablebase) {
+void ApplySyzygyRescoring(FileData<FrameType>& data,
+                          SyzygyTablebase* tablebase) {
   PositionHistory history;
   int rule50ply;
   int gameply;
@@ -711,8 +713,9 @@ void ApplySyzygyRescoring(FileData<FrameType>& data, SyzygyTablebase* tablebase)
 }
 
 template <typename FrameType>
-void ApplyPolicyAdjustments(FileData<FrameType>& data, SyzygyTablebase* tablebase,
-                            float distTemp, float distOffset, float dtzBoost) {
+void ApplyPolicyAdjustments(FileData<FrameType>& data,
+                            SyzygyTablebase* tablebase, float distTemp,
+                            float distOffset, float dtzBoost) {
   if (distTemp == 1.0f && distOffset == 0.0f && dtzBoost == 0.0f) {
     return;  // No adjustments needed
   }
@@ -909,7 +912,8 @@ void ApplyGaviotaCorrections(FileData<FrameType>& data) {
 }
 
 template <typename FrameType>
-void ApplyDTZCorrections(FileData<FrameType>& data, SyzygyTablebase* tablebase) {
+void ApplyDTZCorrections(FileData<FrameType>& data,
+                         SyzygyTablebase* tablebase) {
   // Correct move_count using DTZ for 3 piece no-pawn positions only.
   // If Gaviota TBs are enabled no need to use syzygy.
   if (gaviotaEnabled) return;
@@ -1084,7 +1088,8 @@ void ConvertInputFormat(FileData<FrameType>& data, int newInputFormat) {
 }
 
 template <typename FrameType>
-void WriteNnueOutput(const FileData<FrameType>& data, const std::string& nnue_plain_file,
+void WriteNnueOutput(const FileData<FrameType>& data,
+                     const std::string& nnue_plain_file,
                      ProcessFileFlags flags) {
   // Output data in Stockfish plain format.
   if (!nnue_plain_file.empty()) {
@@ -1147,11 +1152,12 @@ void WriteOutputs(const FileData<FrameType>& data, const std::string& file,
 
 template <typename FrameType>
 FileData<FrameType> ProcessFileInternal(std::vector<FrameType> fileContents,
-                                        SyzygyTablebase* tablebase, float distTemp,
-                                        float distOffset, float dtzBoost,
-                                        int newInputFormat) {
+                                        SyzygyTablebase* tablebase,
+                                        float distTemp, float distOffset,
+                                        float dtzBoost, int newInputFormat) {
   // Process and validate file data
-  FileData<FrameType> data = ProcessAndValidateFileData(std::move(fileContents));
+  FileData<FrameType> data =
+      ProcessAndValidateFileData(std::move(fileContents));
 
   // Apply policy substitutions if available
   ApplyPolicySubstitutions(data);
@@ -1434,9 +1440,9 @@ void RunRescorer() {
 
 template <typename FrameType>
 std::vector<FrameType> RescoreTrainingData(std::vector<FrameType> fileContents,
-                                           SyzygyTablebase* tablebase, float distTemp,
-                                           float distOffset, float dtzBoost,
-                                           int newInputFormat) {
+                                           SyzygyTablebase* tablebase,
+                                           float distTemp, float distOffset,
+                                           float dtzBoost, int newInputFormat) {
   FileData<FrameType> data =
       ProcessFileInternal(std::move(fileContents), tablebase, distTemp,
                           distOffset, dtzBoost, newInputFormat);
