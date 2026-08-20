@@ -738,7 +738,6 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   //   * If that number is 0, the one with larger prior wins.
   //   * If that number is larger than 0, the one with larger eval wins.
   std::vector<EdgeAndNode> edges;
-  // Pre-allocate vector capacity to prevent reallocations in hot search paths.
   edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
     if (parent == root_node_ && !root_move_filter_.empty() &&
@@ -837,11 +836,7 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
   const float draw_score = GetDrawScore(/* is_odd_depth= */ false);
 
   std::vector<float> cumulative_sums;
-<<<<<<< HEAD
-  // Pre-allocate vector capacity to prevent reallocations in hot search paths.
-=======
   // ⚡ Bolt: Reserve capacity to avoid dynamic memory reallocations during search
->>>>>>> origin/pr/2
   cumulative_sums.reserve(root_node_->GetNumEdges());
   float sum = 0.0;
   float max_n = 0.0;
@@ -2094,7 +2089,6 @@ int SearchWorker::PrefetchIntoCache(Node* node, int budget, bool is_odd_depth) {
   // Populate all subnodes and their scores.
   typedef std::pair<float, EdgeAndNode> ScoredEdge;
   std::vector<ScoredEdge> scores;
-  // Pre-allocate vector capacity to prevent reallocations in hot search paths.
   scores.reserve(node->GetNumEdges());
   const float cpuct =
       ComputeCpuct(params_, node->GetN(), node == search_->root_node_);

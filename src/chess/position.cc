@@ -150,9 +150,18 @@ uint64_t PositionHistory::HashLast(int positions) const {
 
 std::string PositionToFen(const Position& pos) {
   std::string result = BoardToFen(pos.GetBoard());
-  result += " " + std::to_string(pos.GetRule50Ply());
-  result += " " + std::to_string(
-                      (pos.GetGamePly() + (pos.IsBlackToMove() ? 1 : 2)) / 2);
+
+  // ⚡ Bolt: Avoid dynamic allocations for FEN counters to improve performance
+  int rule50 = pos.GetRule50Ply();
+  result += " ";
+  if (rule50 < 10) result += static_cast<char>('0' + rule50);
+  else result += std::to_string(rule50);
+
+  int move_num = (pos.GetGamePly() + (pos.IsBlackToMove() ? 1 : 2)) / 2;
+  result += " ";
+  if (move_num < 10) result += static_cast<char>('0' + move_num);
+  else result += std::to_string(move_num);
+
   return result;
 }
 }  // namespace lczero

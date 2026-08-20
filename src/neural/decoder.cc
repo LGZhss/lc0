@@ -244,10 +244,21 @@ void PopulateBoard(pblczero::NetworkFormat::InputFormat input_format,
   if (IsHectopliesFormat(input_format)) {
     rule50plane = (int)(100.0f * planes[kAuxPlaneBase + 5].value);
   }
-  fen += std::to_string(rule50plane);
-  // Reuse the 50 move rule as gameply since we don't know better.
-  fen += " ";
-  fen += std::to_string(rule50plane);
+
+  // ⚡ Bolt: Avoid dynamic allocations for FEN generation
+  if (rule50plane >= 0 && rule50plane < 10) {
+    char digit = static_cast<char>('0' + rule50plane);
+    fen += digit;
+    // Reuse the 50 move rule as gameply since we don't know better.
+    fen += " ";
+    fen += digit;
+  } else {
+    std::string rule50_str = std::to_string(rule50plane);
+    fen += rule50_str;
+    // Reuse the 50 move rule as gameply since we don't know better.
+    fen += " ";
+    fen += rule50_str;
+  }
   board->SetFromFen(fen, rule50, gameply);
 }
 
