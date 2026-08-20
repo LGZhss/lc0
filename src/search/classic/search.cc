@@ -608,12 +608,21 @@ void Search::SendMovesStats() const REQUIRES(counters_mutex_) {
 
 PositionHistory Search::GetPositionHistoryAtNode(const Node* node) const {
   PositionHistory history(played_history_);
-  std::vector<Move> rmoves;
+
+  // Count depth to avoid multiple std::vector allocations
+  size_t depth = 0;
   for (const Node* n = node; n != root_node_; n = n->GetParent()) {
-    rmoves.push_back(n->GetOwnEdge()->GetMove());
+    depth++;
   }
-  for (auto it = rmoves.rbegin(); it != rmoves.rend(); it++) {
-    history.Append(*it);
+
+  std::vector<Move> rmoves(depth);
+  size_t i = depth;
+  for (const Node* n = node; n != root_node_; n = n->GetParent()) {
+    rmoves[--i] = n->GetOwnEdge()->GetMove();
+  }
+
+  for (auto move : rmoves) {
+    history.Append(move);
   }
   return history;
 }
