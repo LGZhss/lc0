@@ -837,11 +837,7 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
   const float draw_score = GetDrawScore(/* is_odd_depth= */ false);
 
   std::vector<float> cumulative_sums;
-<<<<<<< HEAD
   // Pre-allocate vector capacity to prevent reallocations in hot search paths.
-=======
-  // ⚡ Bolt: Reserve capacity to avoid dynamic memory reallocations during search
->>>>>>> origin/pr/2
   cumulative_sums.reserve(root_node_->GetNumEdges());
   float sum = 0.0;
   float max_n = 0.0;

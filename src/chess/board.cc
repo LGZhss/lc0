@@ -968,10 +968,9 @@ bool ChessBoard::IsLegalMove(Move move,
 MoveList ChessBoard::GenerateLegalMoves() const {
   const KingAttackInfo king_attack_info = GenerateKingAttackInfo();
   MoveList result = GeneratePseudolegalMoves();
-  result.erase(
-      std::remove_if(result.begin(), result.end(),
-                     [&](Move m) { return !IsLegalMove(m, king_attack_info); }),
-      result.end());
+  // ⚡ Bolt: Use C++20 std::erase_if for better readability and performance
+  std::erase_if(result,
+                [&](Move m) { return !IsLegalMove(m, king_attack_info); });
   return result;
 }
 
