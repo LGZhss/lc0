@@ -35,7 +35,7 @@
 namespace lczero {
 
 std::string StrJoin(const std::vector<std::string>& strings,
-                    const std::string& delim) {
+                    std::string_view delim) {
   if (strings.empty()) return "";
 
   // Pre-calculate total length to avoid multiple allocations during concatenation
@@ -56,37 +56,39 @@ std::string StrJoin(const std::vector<std::string>& strings,
   return res;
 }
 
-std::vector<std::string> StrSplitAtWhitespace(const std::string& str) {
+std::vector<std::string> StrSplitAtWhitespace(std::string_view str) {
   std::vector<std::string> result;
-  // ⚡ Bolt: Avoid slow std::istringstream overhead by using fast string searches.
   size_t start = str.find_first_not_of(" \t\n\r\v\f");
-  while (start != std::string::npos) {
+  while (start != std::string_view::npos) {
     size_t end = str.find_first_of(" \t\n\r\v\f", start);
-    if (end == std::string::npos) {
-      result.emplace_back(str, start, std::string::npos);
+    if (end == std::string_view::npos) {
+      result.emplace_back(str.substr(start));
       break;
     }
-    result.emplace_back(str, start, end - start);
+    result.emplace_back(str.substr(start, end - start));
     start = str.find_first_not_of(" \t\n\r\v\f", end + 1);
   }
   return result;
 }
 
-std::vector<std::string> StrSplit(const std::string& str,
-                                  const std::string& delim) {
+std::vector<std::string> StrSplit(std::string_view str,
+                                  std::string_view delim) {
   std::vector<std::string> result;
-  for (std::string::size_type pos = 0, next = 0; pos != std::string::npos;
+  for (std::string_view::size_type pos = 0, next = 0; pos != std::string_view::npos;
        pos = next) {
     next = str.find(delim, pos);
-    // ⚡ Bolt: Use emplace_back to construct the string directly in place,
-    // avoiding the temporary allocation from str.substr().
-    result.emplace_back(str, pos, next - pos);
-    if (next != std::string::npos) next += delim.size();
+    if (next == std::string_view::npos) {
+      result.emplace_back(str.substr(pos));
+      break;
+    } else {
+      result.emplace_back(str.substr(pos, next - pos));
+      next += delim.size();
+    }
   }
   return result;
 }
 
-std::vector<int> ParseIntList(const std::string& str) {
+std::vector<int> ParseIntList(std::string_view str) {
   std::vector<int> result;
   for (const auto& x : StrSplit(str, ",")) {
     result.push_back(std::stoi(x));
@@ -94,31 +96,35 @@ std::vector<int> ParseIntList(const std::string& str) {
   return result;
 }
 
-std::string LeftTrim(std::string str) {
+std::string LeftTrim(std::string_view str) {
   const auto it = std::find_if(str.begin(), str.end(),
-                         [](int ch) { return !std::isspace(ch); });
-  str.erase(str.begin(), it);
-  return str;
+                               [](unsigned char ch) { return !std::isspace(ch); });
+  return std::string(str.substr(std::distance(str.begin(), it)));
 }
 
-std::string RightTrim(std::string str) {
+std::string RightTrim(std::string_view str) {
   auto it = std::find_if(str.rbegin(), str.rend(),
-                         [](int ch) { return !std::isspace(ch); });
-  str.erase(it.base(), str.end());
-  return str;
+                         [](unsigned char ch) { return !std::isspace(ch); });
+  return std::string(str.substr(0, std::distance(it, str.rend())));
 }
 
-std::string Trim(std::string str) {
-  return LeftTrim(RightTrim(std::move(str)));
+std::string Trim(std::string_view str) {
+  const auto start = std::find_if(str.begin(), str.end(),
+                                  [](unsigned char ch) { return !std::isspace(ch); });
+  if (start == str.end()) return "";
+  const auto end = std::find_if(str.rbegin(), str.rend(),
+                                [](unsigned char ch) { return !std::isspace(ch); }).base();
+  return std::string(start, end);
 }
 
-bool StringsEqualIgnoreCase(const std::string& a, const std::string& b) {
-  return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](char a, char b) {
-    return std::tolower(a) == std::tolower(b);
+bool StringsEqualIgnoreCase(std::string_view a, std::string_view b) {
+  if (a.size() != b.size()) return false;
+  return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](char ca, char cb) {
+    return std::tolower(static_cast<unsigned char>(ca)) == std::tolower(static_cast<unsigned char>(cb));
   });
 }
 
-std::vector<std::string> FlowText(const std::string& src, size_t width) {
+std::vector<std::string> FlowText(std::string_view src, size_t width) {
   std::vector<std::string> result;
   auto paragraphs = StrSplit(src, "\n");
   for (const auto& paragraph : paragraphs) {
