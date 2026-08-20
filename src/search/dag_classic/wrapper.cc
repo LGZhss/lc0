@@ -26,15 +26,15 @@
 */
 
 #include "chess/gamestate.h"
-#include "search/classic/search.h"
 #include "search/classic/stoppers/factory.h"
+#include "search/dag_classic/search.h"
 #include "search/register.h"
 #include "search/search.h"
 #include "neural/shared_params.h"
 #include "utils/trace.h"
 
 namespace lczero {
-namespace classic {
+namespace dag_classic {
 namespace {
 
 const OptionId kThreadsOptionId{
@@ -50,10 +50,11 @@ const OptionId kClearTree{
      .help_text = "Clear the tree before the next search.",
      .visibility = OptionId::kProOnly}};
 
-class ClassicSearch : public SearchBase {
+class DagClassicSearch : public SearchBase {
  public:
-  ClassicSearch(UciResponder* responder, const OptionsDict* options)
+  DagClassicSearch(UciResponder* responder, const OptionsDict* options)
       : SearchBase(responder), options_(options) {}
+  ~DagClassicSearch() { search_.reset(); }
 
  private:
   void NewGame() override;
@@ -63,6 +64,7 @@ class ClassicSearch : public SearchBase {
     move_start_time_ = std::chrono::steady_clock::now();
   }
   void WaitSearch() override {
+    LOGFILE << "Waiting for the search.";
     if (search_) search_->Wait();
   }
   void StopSearch() override {
@@ -73,9 +75,10 @@ class ClassicSearch : public SearchBase {
   }
 
   const OptionsDict* options_;
-  std::unique_ptr<TimeManager> time_manager_;
+  std::unique_ptr<classic::TimeManager> time_manager_;
   std::unique_ptr<Search> search_;
   std::unique_ptr<NodeTree> tree_;
+  TranspositionTable tt_;
   std::optional<std::chrono::steady_clock::time_point> move_start_time_;
 };
 
@@ -97,35 +100,45 @@ MoveList StringsToMovelist(const std::vector<std::string>& moves,
   return result;
 }
 
-void ClassicSearch::NewGame() {
+void DagClassicSearch::NewGame() {
   LCTRACE_FUNCTION_SCOPE;
+  LOGFILE << "New game.";
   search_.reset();
+  tt_.clear();
   tree_.reset();
-  time_manager_ = MakeTimeManager(*options_);
+  time_manager_ = classic::MakeTimeManager(*options_);
 }
 
-void ClassicSearch::SetPosition(const GameState& pos) {
+void DagClassicSearch::SetPosition(const GameState& pos) {
   LCTRACE_FUNCTION_SCOPE;
   if (!tree_) tree_ = std::make_unique<NodeTree>();
   const bool is_same_game = tree_->ResetToPosition(pos);
-  if (!is_same_game) time_manager_ = MakeTimeManager(*options_);
+  LOGFILE << "Tree reset to a new position.";
+  if (!is_same_game) time_manager_ = classic::MakeTimeManager(*options_);
 }
 
-void ClassicSearch::StartSearch(const GoParams& params) {
+void DagClassicSearch::StartSearch(const GoParams& params) {
   LCTRACE_FUNCTION_SCOPE;
   auto forwarder =
       std::make_unique<NonOwningUciRespondForwarder>(uci_responder_);
-  if (options_->Get<Button>(kClearTree).TestAndReset()) tree_->TrimTreeAtHead();
+  if (options_->Get<Button>(kClearTree).TestAndReset()) {
+    tree_->TrimTreeAtHead();
+    LOGFILE << "Tree cleared.";
+  }
 
   const auto cache_size =
       options_->Get<int>(SharedBackendParams::kNNCacheSizeId);
+  // FIXME: This is too conservative.
   const size_t kAvgNodeSize =
-      sizeof(Node) + MemoryWatchingStopper::kAvgMovesPerPosition * sizeof(Edge);
+      sizeof(Node) + sizeof(LowNode) +
+      classic::MemoryWatchingStopper::kAvgMovesPerPosition * sizeof(Edge);
   const size_t kAvgCacheItemSize =
       3 * sizeof(float) + sizeof(std::unique_ptr<float[]>) +
-      sizeof(float[MemoryWatchingStopper::kAvgMovesPerPosition]);
-  size_t total_memory = tree_.get()->GetCurrentHead()->GetN() * kAvgNodeSize +
-                        cache_size * kAvgCacheItemSize;
+      sizeof(float[classic::MemoryWatchingStopper::kAvgMovesPerPosition]);
+  size_t total_memory =
+      tree_.get()->GetCurrentHead()->GetN() * kAvgNodeSize +
+      (sizeof(TranspositionTable::value_type) + 1) * tt_.bucket_count() +
+      cache_size * kAvgCacheItemSize;
   auto stopper = time_manager_->GetStopper(
       params, tree_.get()->HeadPosition(), total_memory, kAvgNodeSize,
       tree_.get()->GetCurrentHead()->GetN());
@@ -133,32 +146,32 @@ void ClassicSearch::StartSearch(const GoParams& params) {
       *tree_, backend_, std::move(forwarder),
       StringsToMovelist(params.searchmoves, tree_->HeadPosition().GetBoard()),
       *move_start_time_, std::move(stopper), params.infinite, params.ponder,
-      *options_, syzygy_tb_);
+      *options_, &tt_, syzygy_tb_);
 
   LOGFILE << "Timer started at "
           << FormatTime(SteadyClockToSystemClock(*move_start_time_));
   search_->StartThreads(options_->Get<int>(kThreadsOptionId));
 }
 
-class ClassicSearchFactory : public SearchFactory {
-  std::string_view GetName() const override { return "classic"; }
+class DagClassicSearchFactory : public SearchFactory {
+  std::string_view GetName() const override { return "dag-preview"; }
   std::unique_ptr<SearchBase> CreateSearch(
       UciResponder* responder, const OptionsDict* options) const override {
     LCTRACE_FUNCTION_SCOPE;
-    return std::make_unique<ClassicSearch>(responder, options);
+    return std::make_unique<DagClassicSearch>(responder, options);
   }
 
   void PopulateParams(OptionsParser* parser) const override {
     parser->Add<IntOption>(kThreadsOptionId, 0, 128) = 0;
     SearchParams::Populate(parser);
-    PopulateTimeManagementOptions(RunType::kUci, parser);
+    classic::PopulateTimeManagementOptions(classic::RunType::kUci, parser);
 
     parser->Add<ButtonOption>(kClearTree);
   }
 };
 
-REGISTER_SEARCH(ClassicSearchFactory);
+REGISTER_SEARCH(DagClassicSearchFactory)
 
 }  // namespace
-}  // namespace classic
+}  // namespace dag_classic
 }  // namespace lczero

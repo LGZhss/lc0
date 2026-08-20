@@ -59,7 +59,11 @@ MoveList MakeRootMoveFilter(const MoveList& searchmoves,
   assert(tb_hits);
   assert(dtz_success);
   // Search moves overrides tablebase.
-  if (!searchmoves.empty()) return searchmoves;
+  if (!searchmoves.empty()) {
+    MoveList sorted_searchmoves = searchmoves;
+    std::sort(sorted_searchmoves.begin(), sorted_searchmoves.end());
+    return sorted_searchmoves;
+  }
   const auto& board = history.Last().GetBoard();
   MoveList root_moves;
   if (!syzygy_tb || !board.castlings().no_legal_castle() ||
@@ -74,6 +78,7 @@ MoveList MakeRootMoveFilter(const MoveList& searchmoves,
   } else if (syzygy_tb->root_probe_wdl(history.Last(), &root_moves)) {
     tb_hits->fetch_add(1, std::memory_order_acq_rel);
   }
+  std::sort(root_moves.begin(), root_moves.end());
   return root_moves;
 }
 
@@ -801,8 +806,8 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
     if (parent == root_node_ && !root_move_filter_.empty() &&
-        std::find(root_move_filter_.begin(), root_move_filter_.end(),
-                  edge.GetMove()) == root_move_filter_.end()) {
+        !std::binary_search(root_move_filter_.begin(), root_move_filter_.end(),
+                            edge.GetMove())) {
       continue;
     }
     edges.push_back(edge);
@@ -907,8 +912,8 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
 
   for (auto& edge : root_node_->Edges()) {
     if (!root_move_filter_.empty() &&
-        std::find(root_move_filter_.begin(), root_move_filter_.end(),
-                  edge.GetMove()) == root_move_filter_.end()) {
+        !std::binary_search(root_move_filter_.begin(), root_move_filter_.end(),
+                            edge.GetMove())) {
       continue;
     }
     if (edge.GetN() + offset > max_n) {
@@ -922,8 +927,8 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
       max_eval - params_.GetTemperatureWinpctCutoff() / 50.0f;
   for (auto& edge : root_node_->Edges()) {
     if (!root_move_filter_.empty() &&
-        std::find(root_move_filter_.begin(), root_move_filter_.end(),
-                  edge.GetMove()) == root_move_filter_.end()) {
+        !std::binary_search(root_move_filter_.begin(), root_move_filter_.end(),
+                            edge.GetMove())) {
       continue;
     }
     if (edge.GetQ(fpu, draw_score) < min_eval) continue;
@@ -944,12 +949,12 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
 
   for (auto& edge : root_node_->Edges()) {
     if (!root_move_filter_.empty() &&
-        std::find(root_move_filter_.begin(), root_move_filter_.end(),
-                  edge.GetMove()) == root_move_filter_.end()) {
+        !std::binary_search(root_move_filter_.begin(), root_move_filter_.end(),
+                            edge.GetMove())) {
       continue;
     }
     if (edge.GetQ(fpu, draw_score) < min_eval) continue;
-    if (idx-- == 0) return edge;
+    if (idx-- == 0) return EdgeAndNode(edge.edge(), edge.node());
   }
   assert(false);
   return {};
@@ -1421,8 +1426,7 @@ void SearchWorker::GatherMinibatch() {
     // Count the non-collisions.
     int non_collisions = 0;
     for (int i = new_start; i < static_cast<int>(minibatch_.size()); i++) {
-      auto& picked_node = minibatch_[i];
-      if (picked_node.IsCollision()) {
+      if (minibatch_[i].IsCollision()) {
         continue;
       }
       ++non_collisions;
@@ -1444,8 +1448,7 @@ void SearchWorker::GatherMinibatch() {
         ResetTasks();
         int found = 0;
         for (int i = new_start; i < static_cast<int>(minibatch_.size()); i++) {
-          auto& picked_node = minibatch_[i];
-          if (picked_node.IsCollision()) {
+          if (minibatch_[i].IsCollision()) {
             continue;
           }
           ++found;
@@ -1602,7 +1605,7 @@ void SearchWorker::PickNodesToExtend(int collision_limit)
 // repetitions and moves_left.
 // Depth starts with 0 at root, so number of plies in PV equals depth.
 std::pair<int, int> SearchWorker::GetRepetitions(int depth,
-                                                 const Position& position) {
+                                                 const Position& position) const {
   const auto repetitions = position.GetRepetitions();
 
   if (repetitions == 0) return {0, 0};
@@ -1832,8 +1835,8 @@ void SearchWorker::PickNodesToExtendTask(
             }
             // If root move filter exists, make sure move is in the list.
             if (!root_move_filter.empty() &&
-                std::find(root_move_filter.begin(), root_move_filter.end(),
-                          cur_iters[idx].GetMove()) == root_move_filter.end()) {
+                !std::binary_search(root_move_filter.begin(), root_move_filter.end(),
+                                    cur_iters[idx].GetMove())) {
               continue;
             }
           }

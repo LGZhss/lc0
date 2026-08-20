@@ -156,6 +156,7 @@ class Move {
 
   bool operator==(const Move& other) const = default;
   bool operator!=(const Move& other) const = default;
+  auto operator<=>(const Move& other) const = default;
 
   // Mirrors the ranks of the move.
   void Flip() { data_ ^= kFlipMask; }
