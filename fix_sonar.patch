@@ -1,0 +1,46 @@
+--- src/search/classic/search.cc
++++ src/search/classic/search.cc
+@@ -848,7 +848,9 @@
+     if (!root_move_filter_.empty() &&
+         std::find(root_move_filter_.begin(), root_move_filter_.end(),
+                   edge.GetMove()) == root_move_filter_.end()) {
+       continue;
+     }
+     if (edge.GetN() + offset > max_n) {
+       max_n = edge.GetN() + offset;
+       max_eval = edge.GetQ(fpu, draw_score);
+     }
+   }
+@@ -864,7 +866,9 @@
+     if (!root_move_filter_.empty() &&
+         std::find(root_move_filter_.begin(), root_move_filter_.end(),
+                   edge.GetMove()) == root_move_filter_.end()) {
+       continue;
+     }
+-    if (edge.GetQ(fpu, draw_score) < min_eval) continue;
++    if (edge.GetQ(fpu, draw_score) < min_eval) {
++      continue;
++    }
+     sum += std::pow(
+         std::max(0.0f,
+                  (max_n <= 0.0f
+                       ? edge.GetP()
+                       : ((static_cast<float>(edge.GetN()) + offset) / max_n))),
+         1 / temperature);
+     cumulative_sums.push_back(sum);
+   }
+@@ -886,8 +890,12 @@
+     if (!root_move_filter_.empty() &&
+         std::find(root_move_filter_.begin(), root_move_filter_.end(),
+                   edge.GetMove()) == root_move_filter_.end()) {
+       continue;
+     }
+-    if (edge.GetQ(fpu, draw_score) < min_eval) continue;
+-    if (idx-- == 0) return edge;
++    if (edge.GetQ(fpu, draw_score) < min_eval) {
++      continue;
++    }
++    if (idx-- == 0) {
++      return edge;
++    }
+   }
