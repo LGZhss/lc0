@@ -33,7 +33,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
-#include <vector>
 #include <utility>
 #include <absl/cleanup/cleanup.h>
 
@@ -969,10 +968,10 @@ bool ChessBoard::IsLegalMove(Move move,
 MoveList ChessBoard::GenerateLegalMoves() const {
   const KingAttackInfo king_attack_info = GenerateKingAttackInfo();
   MoveList result = GeneratePseudolegalMoves();
-  // ⚡ Bolt Optimization: Replace erase(remove_if) idiom with C++20 erase_if.
-  // Note: MoveList is an alias to std::vector<Move>.
-  std::erase_if(result,
-                [&](Move m) { return !IsLegalMove(m, king_attack_info); });
+  result.erase(
+      std::remove_if(result.begin(), result.end(),
+                     [&](Move m) { return !IsLegalMove(m, king_attack_info); }),
+      result.end());
   return result;
 }
 
