@@ -34,31 +34,30 @@ namespace lczero {
 
 // Joins strings using @delim as delimiter.
 std::string StrJoin(const std::vector<std::string>& strings,
-                    const std::string& delim = " ");
+                    std::string_view delim = " ");
 
 // Splits strings at whitespace.
-std::vector<std::string> StrSplitAtWhitespace(const std::string& str);
+std::vector<std::string> StrSplitAtWhitespace(std::string_view str);
 
 // Split string by delimiter.
-std::vector<std::string> StrSplit(const std::string& str,
-                                  const std::string& delim);
+std::vector<std::string> StrSplit(std::string_view str, std::string_view delim);
 
 // Parses comma-separated list of integers.
-std::vector<int> ParseIntList(const std::string& str);
+std::vector<int> ParseIntList(std::string_view str);
 
 // Trims a string of whitespace from the start.
-std::string LeftTrim(std::string str);
+std::string LeftTrim(std::string_view str);
 
 // Trims a string of whitespace from the end.
-std::string RightTrim(std::string str);
+std::string RightTrim(std::string_view str);
 
 // Trims a string of whitespace from both ends.
-std::string Trim(std::string str);
+std::string Trim(std::string_view str);
 
 // Returns whether strings are equal, ignoring case.
-bool StringsEqualIgnoreCase(const std::string& a, const std::string& b);
+bool StringsEqualIgnoreCase(std::string_view a, std::string_view b);
 
 // Flow text into lines of width up to @width.
-std::vector<std::string> FlowText(const std::string& src, size_t width);
+std::vector<std::string> FlowText(std::string_view src, size_t width);
 
 }  // namespace lczero
