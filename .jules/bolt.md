@@ -8,3 +8,6 @@
 **Learning:** In high-frequency hot paths like the root child selection during search phase (`GetBestRootChildWithTemperature`), the vector allocations such as `cumulative_sums` are dynamically expanding `std::vector`. Since we know the upper bound of edges (`root_node_->GetNumEdges()`), we can pre-allocate it to avoid memory allocations and copying over elements.
 **Action:** Always pre-allocate `std::vector` variables with `reserve` in inner loops / heavy methods if the capacity is known upfront to prevent dynamic resizing, especially in tree traversal and search logic.
 >>>>>>> origin/pr/2
+## 2024-05-13 - [BoardToFen Performance Improvement]
+**Learning:** Found an opportunity to replace string literal array indexing `"012345678"[empty]` with `static_cast<char>('0' + empty)` in FEN string generation to avoid unnecessary string allocation for single-digit characters, as recommended by the Bolt memory.
+**Action:** Implemented `static_cast<char>('0' + empty)` to improve the speed of `BoardToFen`, which is called frequently in chess engines.
