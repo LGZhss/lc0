@@ -837,11 +837,8 @@ EdgeAndNode Search::GetBestRootChildWithTemperature(float temperature) const {
   const float draw_score = GetDrawScore(/* is_odd_depth= */ false);
 
   std::vector<float> cumulative_sums;
-<<<<<<< HEAD
-  // Pre-allocate vector capacity to prevent reallocations in hot search paths.
-=======
-  // ⚡ Bolt: Reserve capacity to avoid dynamic memory reallocations during search
->>>>>>> origin/pr/2
+  // ⚡ Bolt: Reserve capacity to avoid dynamic memory reallocations during
+  // search
   cumulative_sums.reserve(root_node_->GetNumEdges());
   float sum = 0.0;
   float max_n = 0.0;
@@ -2024,7 +2021,8 @@ void SearchWorker::ExtendNode(Node* node, int depth,
 // 2b. Copy collisions into shared collisions.
 void SearchWorker::CollectCollisions() {
   LCTRACE_FUNCTION_SCOPE;
-  // 【魔改核心】：多线程无锁预检，避免在无碰撞时无意义地抢占全局 mutex 锁，降低锁争用开销
+  // 【魔改核心】：多线程无锁预检，避免在无碰撞时无意义地抢占全局 mutex
+  // 锁，降低锁争用开销
   bool has_collision = false;
   for (const NodeToProcess& node_to_process : minibatch_) {
     if (node_to_process.IsCollision()) {

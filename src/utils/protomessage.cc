@@ -1,5 +1,6 @@
 #include "utils/protomessage.h"
 
+#include <charconv>
 #include <cstdint>
 
 #include "utils/exception.h"
@@ -7,6 +8,18 @@
 namespace lczero {
 
 namespace {
+
+template <typename T>
+void AppendInteger(T val, std::string* out) {
+  // ⚡ Bolt: Avoid std::to_string overhead (allocation + string copy + locale
+  // checking).
+  char buf[32];
+  auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), val);
+  if (ec == std::errc()) {
+    out->append(buf, ptr - buf);
+  }
+}
+
 uint64_t ReadVarInt(const std::uint8_t** iter, const std::uint8_t* const end) {
   uint64_t res = 0;
   uint64_t multiplier = 1;
@@ -165,16 +178,16 @@ void ProtoMessage::AppendJsonValue(double val, std::string* out) {
   out->append(std::to_string(val));
 }
 void ProtoMessage::AppendJsonValue(uint64_t val, std::string* out) {
-  out->append(std::to_string(val));
+  AppendInteger(val, out);
 }
 void ProtoMessage::AppendJsonValue(int64_t val, std::string* out) {
-  out->append(std::to_string(val));
+  AppendInteger(val, out);
 }
 void ProtoMessage::AppendJsonValue(uint32_t val, std::string* out) {
-  out->append(std::to_string(val));
+  AppendInteger(val, out);
 }
 void ProtoMessage::AppendJsonValue(int32_t val, std::string* out) {
-  out->append(std::to_string(val));
+  AppendInteger(val, out);
 }
 void ProtoMessage::AppendJsonValue(const ProtoMessage& val, std::string* out) {
   out->append(val.OutputAsJson());

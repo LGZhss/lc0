@@ -28,6 +28,7 @@
 #include "uciloop.h"
 
 #include <algorithm>
+#include <charconv>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
@@ -43,6 +44,27 @@
 #include "version.h"
 
 namespace lczero {
+
+namespace {
+
+template <typename T>
+void AppendInteger(T val, std::string* out) {
+  // ⚡ Bolt: Avoid slow std::to_string logic, use fast std::to_chars instead.
+  char buf[32];
+  auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), val);
+  if (ec == std::errc()) {
+    out->append(buf, ptr - buf);
+  }
+}
+
+template <typename T>
+void AppendNamedInteger(const char* name, T val, std::string* out) {
+  out->append(name);
+  AppendInteger(val, out);
+}
+
+}  // namespace
+
 namespace {
 
 const OptionId kUciChess960{
@@ -79,8 +101,7 @@ const std::unordered_map<std::string, std::unordered_set<std::string>>
         {{"quit"}, {}},
         {{"xyzzy"}, {}},
         {{"fen"}, {}},
-        {{"wait"}, {}}
-};
+        {{"wait"}, {}}};
 
 std::pair<std::string, std::unordered_map<std::string, std::string>>
 ParseCommand(const std::string& line) {
@@ -286,8 +307,8 @@ void StringUciResponder::OutputBestMove(BestMoveInfo* info) {
   const bool c960 = IsChess960();
   std::string res = "bestmove " + info->bestmove.ToString(c960);
   if (!info->ponder.is_null()) res += " ponder " + info->ponder.ToString(c960);
-  if (info->player != -1) res += " player " + std::to_string(info->player);
-  if (info->game_id != -1) res += " gameid " + std::to_string(info->game_id);
+  if (info->player != -1) AppendNamedInteger(" player ", info->player, &res);
+  if (info->game_id != -1) AppendNamedInteger(" gameid ", info->game_id, &res);
   if (info->is_black)
     res += " side " + std::string(*info->is_black ? "black" : "white");
   SendRawResponse(res);
@@ -298,31 +319,34 @@ void StringUciResponder::OutputThinkingInfo(std::vector<ThinkingInfo>* infos) {
   const bool c960 = IsChess960();
   for (const auto& info : *infos) {
     std::string res = "info";
-    if (info.player != -1) res += " player " + std::to_string(info.player);
-    if (info.game_id != -1) res += " gameid " + std::to_string(info.game_id);
+    if (info.player != -1) AppendNamedInteger(" player ", info.player, &res);
+    if (info.game_id != -1) AppendNamedInteger(" gameid ", info.game_id, &res);
     if (info.is_black)
       res += " side " + std::string(*info.is_black ? "black" : "white");
     if (info.depth >= 0)
-      res += " depth " + std::to_string(std::max(info.depth, 1));
-    if (info.seldepth >= 0) res += " seldepth " + std::to_string(info.seldepth);
-    if (info.time >= 0) res += " time " + std::to_string(info.time);
-    if (info.nodes >= 0) res += " nodes " + std::to_string(info.nodes);
-    if (info.mate) res += " score mate " + std::to_string(*info.mate);
-    if (info.score) res += " score cp " + std::to_string(*info.score);
+      AppendNamedInteger(" depth ", std::max(info.depth, 1), &res);
+    if (info.seldepth >= 0)
+      AppendNamedInteger(" seldepth ", info.seldepth, &res);
+    if (info.time >= 0) AppendNamedInteger(" time ", info.time, &res);
+    if (info.nodes >= 0) AppendNamedInteger(" nodes ", info.nodes, &res);
+    if (info.mate) AppendNamedInteger(" score mate ", *info.mate, &res);
+    if (info.score) AppendNamedInteger(" score cp ", *info.score, &res);
     if (info.wdl && options_ && options_->Get<bool>(kShowWDL)) {
-      res += " wdl " + std::to_string(info.wdl->w) + " " +
-             std::to_string(info.wdl->d) + " " + std::to_string(info.wdl->l);
+      AppendNamedInteger(" wdl ", info.wdl->w, &res);
+      AppendNamedInteger(" ", info.wdl->d, &res);
+      AppendNamedInteger(" ", info.wdl->l, &res);
     }
     if (info.moves_left && options_ && options_->Get<bool>(kShowMovesleft)) {
-      res += " movesleft " + std::to_string(*info.moves_left);
+      AppendNamedInteger(" movesleft ", *info.moves_left, &res);
     }
-    if (info.hashfull >= 0) res += " hashfull " + std::to_string(info.hashfull);
-    if (info.nps >= 0) res += " nps " + std::to_string(info.nps);
+    if (info.hashfull >= 0)
+      AppendNamedInteger(" hashfull ", info.hashfull, &res);
+    if (info.nps >= 0) AppendNamedInteger(" nps ", info.nps, &res);
     if (info.eps >= 0 && options_ && options_->Get<bool>(kShowEPS)) {
-      res += " eps " + std::to_string(info.eps);
+      AppendNamedInteger(" eps ", info.eps, &res);
     }
-    if (info.tb_hits >= 0) res += " tbhits " + std::to_string(info.tb_hits);
-    if (info.multipv >= 0) res += " multipv " + std::to_string(info.multipv);
+    if (info.tb_hits >= 0) AppendNamedInteger(" tbhits ", info.tb_hits, &res);
+    if (info.multipv >= 0) AppendNamedInteger(" multipv ", info.multipv, &res);
 
     if (!info.pv.empty()) {
       res += " pv";
