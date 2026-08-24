@@ -755,7 +755,6 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   // Pre-allocate vector capacity to prevent reallocations in hot search paths.
   edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
-  edges.reserve(parent->GetNumEdges());
     if (parent == root_node_ && !root_move_filter_.empty() &&
         !std::binary_search(root_move_filter_.begin(), root_move_filter_.end(),
                             edge.GetMove())) {

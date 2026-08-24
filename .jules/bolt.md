@@ -14,3 +14,7 @@
 **Learning:** O(N) `std::find` in hot search loops (like evaluating edges for `root_move_filter_`) can be optimized safely by applying a pre-sort to `MoveList` and using `std::binary_search`. This also applies when transforming move strings in initialization functions.
 **Action:** Always check `std::find` calls within search loops on moderately sized lists. If the list is static after creation, sort it and use `std::binary_search` instead, implementing an `operator<` if necessary for custom wrapper types like `Move`.
 >>>>>>> origin/pr/14
+
+## 2024-07-04 - Optimize `std::to_string` allocations
+**Learning:** `std::to_string` allocates strings dynamically on the heap. In hot paths and tight loops, this causes performance bottlenecks. Direct string appending with `std::to_chars` and direct insertion to streams like `std::ostringstream` avoid this entirely.
+**Action:** Replace `std::to_string` instances where possible: when concatenating to an existing stream use stream insertion (`oss << val`), and when appending to a string, use C++17 `<charconv>`'s `std::to_chars` with a stack buffer.
