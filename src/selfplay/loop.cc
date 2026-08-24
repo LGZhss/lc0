@@ -27,6 +27,7 @@
 
 #include "selfplay/loop.h"
 
+#include <charconv>
 #include <optional>
 
 #include "selfplay/tournament.h"
@@ -71,17 +72,26 @@ void SelfPlayLoop::SendGameInfo(const GameInfo& info) {
   // Send separate resign report before gameready as client gameready parsing
   // will easily get confused by adding new parameters as both training file
   // and move list potentially contain spaces.
+  char buf[32];
   if (info.min_false_positive_threshold) {
-    std::string resign_res = "resign_report";
-    resign_res +=
-        " fp_threshold " + std::to_string(*info.min_false_positive_threshold);
+    std::string resign_res = "resign_report fp_threshold ";
+    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), *info.min_false_positive_threshold);
+    if (ec == std::errc()) {
+      resign_res.append(buf, ptr - buf);
+    }
     responses.push_back(resign_res);
   }
   std::string res = "gameready";
   if (!info.training_filename.empty())
     res += " trainingfile " + info.training_filename;
-  if (info.game_id != -1) res += " gameid " + std::to_string(info.game_id);
-  res += " play_start_ply " + std::to_string(info.play_start_ply);
+  if (info.game_id != -1) {
+    res += " gameid ";
+    auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), info.game_id);
+    if (ec == std::errc()) res.append(buf, ptr - buf);
+  }
+  res += " play_start_ply ";
+  auto [ptr, ec] = std::to_chars(buf, buf + sizeof(buf), info.play_start_ply);
+  if (ec == std::errc()) res.append(buf, ptr - buf);
   if (info.is_black)
     res += " player1 " + std::string(*info.is_black ? "black" : "white");
   if (info.game_result != GameResult::UNDECIDED) {
@@ -147,10 +157,9 @@ void SelfPlayLoop::SendTournament(const TournamentInfo& info) {
       << info.results[1][0];
   oss << " P1-B: +" << info.results[0][1] << " -" << info.results[2][1] << " ="
       << info.results[1][1];
-  oss << " npm " + std::to_string(static_cast<double>(info.nodes_total_) /
-                                  info.move_count_);
-  oss << " nodes " + std::to_string(info.nodes_total_);
-  oss << " moves " + std::to_string(info.move_count_);
+  oss << " npm " << (static_cast<double>(info.nodes_total_) / info.move_count_);
+  oss << " nodes " << info.nodes_total_;
+  oss << " moves " << info.move_count_;
   uci_responder_->SendRawResponse(oss.str());
 }
 
