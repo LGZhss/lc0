@@ -207,6 +207,8 @@ namespace {
 void ApplyDirichletNoise(Node* node, float eps, double alpha) {
   float total = 0;
   std::vector<float> noise;
+  // ⚡ Bolt: Pre-allocate vector capacity to avoid dynamic resizing.
+  noise.reserve(node->GetNumEdges());
 
   for (int i = 0; i < node->GetNumEdges(); ++i) {
     float eta = Random::Get().GetGamma(alpha, 1.0);
@@ -755,7 +757,7 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
   // Pre-allocate vector capacity to prevent reallocations in hot search paths.
   edges.reserve(parent->GetNumEdges());
   for (auto& edge : parent->Edges()) {
-  edges.reserve(parent->GetNumEdges());
+    edges.reserve(parent->GetNumEdges());
     if (parent == root_node_ && !root_move_filter_.empty() &&
         !std::binary_search(root_move_filter_.begin(), root_move_filter_.end(),
                             edge.GetMove())) {
@@ -1774,7 +1776,8 @@ void SearchWorker::PickNodesToExtendTask(
             }
             // If root move filter exists, make sure move is in the list.
             if (!root_move_filter.empty() &&
-                !std::binary_search(root_move_filter.begin(), root_move_filter.end(),
+                !std::binary_search(root_move_filter.begin(),
+                                    root_move_filter.end(),
                                     cur_iters[idx].GetMove())) {
               continue;
             }
@@ -2035,7 +2038,8 @@ void SearchWorker::ExtendNode(Node* node, int depth,
 // 2b. Copy collisions into shared collisions.
 void SearchWorker::CollectCollisions() {
   LCTRACE_FUNCTION_SCOPE;
-  // 【魔改核心】：多线程无锁预检，避免在无碰撞时无意义地抢占全局 mutex 锁，降低锁争用开销
+  // 【魔改核心】：多线程无锁预检，避免在无碰撞时无意义地抢占全局 mutex
+  // 锁，降低锁争用开销
   bool has_collision = false;
   for (const NodeToProcess& node_to_process : minibatch_) {
     if (node_to_process.IsCollision()) {
