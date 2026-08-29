@@ -14,3 +14,7 @@
 **Learning:** O(N) `std::find` in hot search loops (like evaluating edges for `root_move_filter_`) can be optimized safely by applying a pre-sort to `MoveList` and using `std::binary_search`. This also applies when transforming move strings in initialization functions.
 **Action:** Always check `std::find` calls within search loops on moderately sized lists. If the list is static after creation, sort it and use `std::binary_search` instead, implementing an `operator<` if necessary for custom wrapper types like `Move`.
 >>>>>>> origin/pr/14
+
+## 2026-08-29 - [Stream formatting optimization]
+**Learning:** In C++ using `+` and `std::to_string` directly in a stream (like `oss << "str " + std::to_string(num)`) forces unnecessary heap allocations for string temporaries.
+**Action:** Chain stream insertions (`oss << "str " << num`) directly to bypass creating temporary std::string objects entirely.
