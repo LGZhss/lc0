@@ -14,3 +14,7 @@
 **Learning:** O(N) `std::find` in hot search loops (like evaluating edges for `root_move_filter_`) can be optimized safely by applying a pre-sort to `MoveList` and using `std::binary_search`. This also applies when transforming move strings in initialization functions.
 **Action:** Always check `std::find` calls within search loops on moderately sized lists. If the list is static after creation, sort it and use `std::binary_search` instead, implementing an `operator<` if necessary for custom wrapper types like `Move`.
 >>>>>>> origin/pr/14
+
+## 2024-07-04 - Pre-allocate vector in std::copy_if with std::back_inserter
+**Learning:** In hot search paths, using `std::copy_if` alongside `std::back_inserter` into a dynamically sized container (like `std::vector`) can cause multiple underlying reallocations. Even if `std::copy_if` only copies conditionally, we can compute an upper bound for the newly added elements (`std::distance(rbegin, rend)`).
+**Action:** When appending to a vector via `std::copy_if`, always calculate the maximum potential size and call `.reserve()` before the copy to guarantee the buffer only reallocates at most once, which is critical for search tree performance.
