@@ -14,3 +14,7 @@
 **Learning:** O(N) `std::find` in hot search loops (like evaluating edges for `root_move_filter_`) can be optimized safely by applying a pre-sort to `MoveList` and using `std::binary_search`. This also applies when transforming move strings in initialization functions.
 **Action:** Always check `std::find` calls within search loops on moderately sized lists. If the list is static after creation, sort it and use `std::binary_search` instead, implementing an `operator<` if necessary for custom wrapper types like `Move`.
 >>>>>>> origin/pr/14
+
+## 2024-07-04 - Pre-allocate vector in dag search copy_if
+**Learning:** Hot paths like `std::copy_if` appending to `current_path` in `src/search/dag_classic/search.cc` do not automatically pre-allocate memory. Since the maximum number of items added is exactly `std::distance(rbegin, rend)`, we can use `reserve` to prevent dynamic vector resizing.
+**Action:** Always check `std::copy_if` with `std::back_inserter` in hot loops. If the maximum size bounds are known (e.g. from iterators), pre-allocate the capacity using `.reserve()` to avoid multiple heap reallocations.
