@@ -14,3 +14,7 @@
 **Learning:** O(N) `std::find` in hot search loops (like evaluating edges for `root_move_filter_`) can be optimized safely by applying a pre-sort to `MoveList` and using `std::binary_search`. This also applies when transforming move strings in initialization functions.
 **Action:** Always check `std::find` calls within search loops on moderately sized lists. If the list is static after creation, sort it and use `std::binary_search` instead, implementing an `operator<` if necessary for custom wrapper types like `Move`.
 >>>>>>> origin/pr/14
+
+## 2024-10-06 - Pre-allocate std::vector in hot paths
+**Learning:** Dynamic vector resizing via `std::back_inserter` during `std::copy_if` in a hot MCTS search path (`PickNodesToExtendTask`) causes expensive and unnecessary heap reallocations.
+**Action:** When gathering items into vectors dynamically, pre-calculate the size required (or an upper bound) and call `.reserve()` to allocate exactly once.
