@@ -14,3 +14,6 @@
 **Learning:** O(N) `std::find` in hot search loops (like evaluating edges for `root_move_filter_`) can be optimized safely by applying a pre-sort to `MoveList` and using `std::binary_search`. This also applies when transforming move strings in initialization functions.
 **Action:** Always check `std::find` calls within search loops on moderately sized lists. If the list is static after creation, sort it and use `std::binary_search` instead, implementing an `operator<` if necessary for custom wrapper types like `Move`.
 >>>>>>> origin/pr/14
+## 2026-10-07 - Pre-allocate vector capacity before std::copy_if
+**Learning:** In MCTS hot paths, functions like `PickNodesToExtendTask` use `std::copy_if` with `std::back_inserter` to build paths dynamically. This leads to hidden `std::vector` memory re-allocations if the capacity is not reserved upfront.
+**Action:** Use `.reserve()` to pre-allocate vector capacity when the maximum elements are known before appending to it, especially inside search algorithms.
