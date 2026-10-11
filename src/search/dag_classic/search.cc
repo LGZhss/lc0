@@ -1993,6 +1993,8 @@ void SearchWorker::PickNodesToExtendTask(
       auto rend = visits_to_perform.rend();
       auto rbegin = rend - std::distance(visits_to_perform.begin(), end);
       size_t size = current_path.size();
+      // ⚡ Bolt: Pre-allocate capacity to prevent dynamic vector reallocations in this hot MCTS search path
+      current_path.reserve(size + std::distance(rbegin, rend));
       std::copy_if(rbegin, rend, std::back_inserter(current_path),
                    [](CurrentPath& v) {
                      return !!v;
