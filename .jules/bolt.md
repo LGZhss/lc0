@@ -14,3 +14,7 @@
 **Learning:** O(N) `std::find` in hot search loops (like evaluating edges for `root_move_filter_`) can be optimized safely by applying a pre-sort to `MoveList` and using `std::binary_search`. This also applies when transforming move strings in initialization functions.
 **Action:** Always check `std::find` calls within search loops on moderately sized lists. If the list is static after creation, sort it and use `std::binary_search` instead, implementing an `operator<` if necessary for custom wrapper types like `Move`.
 >>>>>>> origin/pr/14
+
+## 2024-10-20 - Pre-allocate vector capacity before std::copy_if with std::back_inserter
+**Learning:** In the DAG MCTS implementation, search tree paths (`current_path`) are continuously built using `std::copy_if` coupled with `std::back_inserter`. Because the target vector was not pre-allocated despite the maximum insertion size being known (the distance between iterators), it resulted in implicit dynamic capacity reallocations within a highly active hot path.
+**Action:** When using `std::copy_if` into a vector using `std::back_inserter` where the upper bounds of elements being copied is known via the source iterator's distance, explicitly `reserve()` the capacity beforehand to bypass `std::vector` dynamic resizing overhead.
