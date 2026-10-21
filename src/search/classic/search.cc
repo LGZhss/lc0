@@ -582,6 +582,8 @@ void Search::SendMovesStats() const REQUIRES(counters_mutex_) {
 
   if (params_.GetVerboseStats()) {
     std::vector<ThinkingInfo> infos;
+    // Pre-allocate to prevent dynamic resizing overhead.
+    infos.reserve(move_stats.size());
     std::transform(move_stats.begin(), move_stats.end(),
                    std::back_inserter(infos), [](const std::string& line) {
                      ThinkingInfo info;

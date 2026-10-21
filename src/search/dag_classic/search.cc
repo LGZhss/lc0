@@ -645,6 +645,8 @@ void Search::SendMovesStats() const REQUIRES(counters_mutex_) {
 
   if (params_.GetVerboseStats()) {
     std::vector<ThinkingInfo> infos;
+    // Pre-allocate to prevent dynamic resizing overhead.
+    infos.reserve(move_stats.size());
     std::transform(move_stats.begin(), move_stats.end(),
                    std::back_inserter(infos), [](const std::string& line) {
                      ThinkingInfo info;
@@ -1993,6 +1995,8 @@ void SearchWorker::PickNodesToExtendTask(
       auto rend = visits_to_perform.rend();
       auto rbegin = rend - std::distance(visits_to_perform.begin(), end);
       size_t size = current_path.size();
+      // Pre-allocate to prevent dynamic vector resizing overhead in hot path.
+      current_path.reserve(size + std::distance(rbegin, rend));
       std::copy_if(rbegin, rend, std::back_inserter(current_path),
                    [](CurrentPath& v) {
                      return !!v;
